@@ -431,63 +431,104 @@ if (QUIET) {
   }
 
   /* --- other visitors ---
-     Soft, half-seen figures stand about the room: alone at a painting, in a
-     pair, in a group of three. They are flat shapes that always turn to face
-     the visitor, the way an architect draws people into a picture of a
-     building. They give the room scale. They are not characters.
-     When the visitor comes near, a figure steps aside. It also moves out of
-     the way when it stands between the visitor and the painting they chose. --- */
+     Phantoms, painted like watercolour. Each is a head and one long wash of
+     colour for the body, with soft, wandering edges, thinning to nothing
+     before it reaches the floor. They are flat, and always turn to face the
+     visitor. They give the room scale and a sense of company. They are not
+     characters.
+
+     They are scattered afresh on every visit: some alone, some in pairs, some
+     in threes, some at a painting, some out in the room. When the visitor
+     comes near, a phantom glides aside. It also clears the view to a painting
+     the visitor has chosen, and drifts back afterwards. --- */
   {
-    /* three figures, each drawn once: in trousers, in a long coat, with a bag */
-    function figure(kind) {
-      return paint(256, 512, (g, w, h) => {
-        g.fillStyle = "#3d4853"; g.shadowColor = "#3d4853"; g.shadowBlur = 7;
-        const blob = (pts) => { g.beginPath(); pts.forEach(([x, y], i) => g[i ? "lineTo" : "moveTo"](x, y)); g.closePath(); g.fill(); };
-        g.beginPath(); g.ellipse(128, 56, 24, 30, 0, 0, 7); g.fill();                      /* head */
-        g.fillRect(119, 82, 18, 20);                                                       /* neck */
-        if (kind === 1) {
-          blob([[90, 104], [166, 104], [176, 128], [172, 250], [182, 392], [74, 392], [84, 250], [80, 128]]);   /* long coat */
-          blob([[100, 388], [124, 388], [121, 496], [103, 496]]); blob([[132, 388], [156, 388], [153, 496], [135, 496]]);
-        } else {
-          blob([[88, 104], [168, 104], [178, 130], [170, 262], [166, 300], [90, 300], [86, 262], [78, 130]]);   /* jacket */
-          blob([[90, 296], [127, 296], [122, 496], [99, 496]]); blob([[129, 296], [166, 296], [157, 496], [134, 496]]);
+    const any = Math.random, between = (lo, hi) => lo + any() * (hi - lo);
+    const bell = () => (any() + any() + any() - 1.5) / 1.5;          /* a soft random number around zero */
+    /* Watercolour, the way a painter's wash behaves: take an outline, make
+       its edge wander, and lay many pale copies over each other. Where the
+       copies agree the colour is deep. Where they differ it thins to a soft,
+       uneven edge. */
+    function wander(pts, rounds, by) {
+      for (let r = 0; r < rounds; r++) {
+        const out = [];
+        for (let i = 0; i < pts.length; i++) {
+          const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % pts.length], len = Math.hypot(x1 - x0, y1 - y0);
+          out.push([x0, y0], [(x0 + x1) / 2 + bell() * len * by, (y0 + y1) / 2 + bell() * len * by]);
         }
-        blob([[78, 112], [92, 108], [86, 292], [70, 290]]); blob([[178, 112], [164, 108], [170, 292], [186, 290]]);   /* arms */
-        g.beginPath(); g.ellipse(108, 500, 17, 7, 0, 0, 7); g.fill(); g.beginPath(); g.ellipse(148, 500, 17, 7, 0, 0, 7); g.fill();
-        if (kind === 2) blob([[176, 286], [208, 286], [212, 352], [172, 352]]);            /* a bag in one hand */
-        /* the figure thins out towards the floor, so it never quite stands on it */
-        g.shadowBlur = 0; g.globalCompositeOperation = "destination-in";
+        pts = out; by *= 0.75;
+      }
+      return pts;
+    }
+    const WASHES = ["72,90,112", "92,86,116", "112,102,98", "72,106,110", "134,116,92", "96,104,120"];   /* slate, violet grey, warm grey, sea grey, ochre grey, blue grey */
+    function phantom() {
+      return paint(256, 512, (g, w, h) => {
+        const rgb = WASHES[Math.floor(any() * WASHES.length)].split(",").map(Number);
+        const lean = bell() * 14, wide = between(0.82, 1.18), cx = 128;
+        const X = (x, y) => cx + x * wide + lean * (1 - y / 480);
+        /* the body: narrow at the shoulders, wider at the hem, like a long coat seen through mist */
+        const body = [[-30, 118], [-42, 150], [-38, 250], [-50, 380], [-34, 462], [0, 474], [34, 462], [50, 380], [38, 250], [42, 150], [30, 118], [12, 102], [-12, 102]].map(([x, y]) => [X(x, y), y]);
+        const head = []; for (let k = 0; k < 10; k++) { const t = (k / 10) * 6.283; head.push([X(0, 62) + Math.cos(t) * 23, 62 + Math.sin(t) * 28]); }
+        const lay = (shape, layers, spread) => {
+          const base = wander(shape, 2, 0.22);
+          for (let i = 0; i < layers; i++) {
+            const c = rgb.map((v) => Math.round(v + bell() * 16));
+            g.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.045)`;
+            g.beginPath(); wander(base, 3, spread).forEach(([x, y], k) => g[k ? "lineTo" : "moveTo"](x, y)); g.closePath(); g.fill();
+          }
+        };
+        lay(body, 34, 0.5); lay(head, 26, 0.42);
+        /* a few blooms, where wet paint has spread into wet paper */
+        for (let i = 0; i < 5; i++) {
+          const bx = X(bell() * 26, 280), by = between(140, 420), br = between(18, 46);
+          const r = g.createRadialGradient(bx, by, 0, bx, by, br);
+          r.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.16)`); r.addColorStop(1, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
+          g.fillStyle = r; g.fillRect(bx - br, by - br, br * 2, br * 2);
+        }
+        /* the grain of the paper: tiny flecks where no paint settled */
+        g.globalCompositeOperation = "destination-out";
+        for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(0,0,0,${between(0.05, 0.22)})`; g.fillRect(any() * w, any() * h, between(0.8, 2.2), between(0.8, 2.2)); }
+        /* the wash thins towards the floor and is gone before it gets there */
+        g.globalCompositeOperation = "destination-in";
         const v = g.createLinearGradient(0, 0, 0, h);
-        v.addColorStop(0, "rgba(0,0,0,1)"); v.addColorStop(0.55, "rgba(0,0,0,.92)"); v.addColorStop(1, "rgba(0,0,0,.3)");
+        v.addColorStop(0, "rgba(0,0,0,1)"); v.addColorStop(0.5, "rgba(0,0,0,.95)"); v.addColorStop(0.92, "rgba(0,0,0,0)");
         g.fillStyle = v; g.fillRect(0, 0, w, h);
       });
     }
-    const kinds = [figure(0), figure(1), figure(2)];
-    const shade = paint(64, 64, (g, w, h) => { const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, "rgba(20,20,24,.5)"); r.addColorStop(1, "rgba(20,20,24,0)"); g.fillStyle = r; g.fillRect(0, 0, w, h); });
-    /* where each one stands: x, z, height in metres, which drawing, mirrored or not */
-    const HOMES = [
-      [-2.9, 4.2, 1.74, 0, 1],                                   /* alone, at a painting on the left */
-      [2.7, -0.2, 1.66, 1, -1],                                  /* alone, at a painting on the right */
-      [-1.9, -5.0, 1.8, 2, 1],                                   /* alone, at the far wall */
-      [2.95, 4.35, 1.78, 0, -1], [2.45, 4.8, 1.64, 1, 1],        /* a couple */
-      [-1.3, -1.5, 1.7, 1, 1], [-0.55, -1.95, 1.82, 0, -1], [-1.45, -2.3, 1.68, 2, -1],   /* three, talking by the text wall */
-    ];
-    const REST = 0.48;                                           /* how see-through a figure is at rest */
-    visitors = HOMES.map(([x, z, tall, kind, flip], i) => {
-      const body = new THREE.Mesh(new THREE.PlaneGeometry(tall / 2, tall), basic({ map: kinds[kind], transparent: true, opacity: REST, depthWrite: false }));
-      body.scale.x = flip; body.renderOrder = 6; scene.add(body);
-      const foot = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.42), basic({ map: shade, transparent: true, opacity: 0.3, depthWrite: false }));
-      foot.rotation.x = -Math.PI / 2; foot.renderOrder = 3; scene.add(foot);
-      return { x, z, hx: x, hz: z, tall, body, foot, flip, phase: i * 1.7 };
+    const paintings = Array.from({ length: 8 }, phantom);            /* eight different phantoms, shared out among the crowd */
+
+    /* Scatter the crowd. Pick a spot, check it is free, put one, two or three there. */
+    const COUNT = 20, homes = [], spots = [];
+    /* inside the room, and clear of the floating wall and the bench */
+    const free = (x, z) => Math.abs(x) <= HX - 0.6 && Math.abs(z) <= HZ - 0.6 && !BLOCKS.some((b) => Math.abs(x - b.x) < b.hw + 0.45 && Math.abs(z - b.z) < b.hd + 0.45);
+    for (let tries = 0; homes.length < COUNT && tries < 600; tries++) {
+      let x, z;
+      if (any() < 0.55) {                                            /* at a painting, a step or two back from it */
+        const s = slots[Math.floor(any() * slots.length)], back = between(1.5, 2.6), along = between(-0.9, 0.9);
+        x = s.p.x + s.n.x * back - s.n.z * along; z = s.p.z + s.n.z * back + s.n.x * along;
+      } else { x = between(-HX + 0.9, HX - 0.9); z = between(-HZ + 0.9, HZ - 0.9); }      /* out in the room */
+      if (!free(x, z) || Math.hypot(x, z - (HZ - 1.4)) < 2.4 || spots.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < 1.5)) continue;
+      spots.push([x, z]);
+      const size = any() < 0.5 ? 1 : any() < 0.62 ? 2 : 3, turn = any() * 6.283;
+      for (let k = 0; k < size && homes.length < COUNT; k++) {
+        const hx = x + (size > 1 ? Math.cos(turn + (k / size) * 6.283) * between(0.34, 0.5) : 0), hz = z + (size > 1 ? Math.sin(turn + (k / size) * 6.283) * between(0.34, 0.5) : 0);
+        if (free(hx, hz)) homes.push([hx, hz]);
+      }
+    }
+    const REST = 0.5;                                                /* how much of a phantom shows, at most */
+    visitors = homes.map(([x, z], i) => {
+      const tall = between(1.56, 1.9);
+      const body = new THREE.Mesh(new THREE.PlaneGeometry(tall / 2, tall), basic({ map: paintings[i % paintings.length], transparent: true, opacity: 0, depthWrite: false }));
+      body.scale.x = any() < 0.5 ? -1 : 1; body.renderOrder = 6; scene.add(body);
+      return { x, z, hx: x, hz: z, tall, body, phase: any() * 60, shimmer: between(0.0004, 0.0009) };
     });
     moveVisitors = (dt, now) => {
       const chosen = focus && sharp ? sharp.slot : null;
       for (const v of visitors) {
         let tx = v.hx, tz = v.hz;
-        /* step back from the visitor */
+        /* glide back from the visitor */
         const dx = v.x - pos.x, dz = v.z - pos.z, far = Math.hypot(dx, dz) || 0.001, NEAR = 2.7;
         if (far < NEAR) { const push = (NEAR - far) * 1.25; tx += (dx / far) * push; tz += (dz / far) * push; }
-        /* stand clear of the line between the visitor and the painting they are looking at */
+        /* keep clear of the line between the visitor and the painting they are looking at */
         if (chosen) {
           const lx = chosen.p.x - pos.x, lz = chosen.p.z - pos.z, len = Math.hypot(lx, lz) || 0.001;
           const along = (dx * lx + dz * lz) / len, side = (dx * lz - dz * lx) / len;
@@ -497,16 +538,14 @@ if (QUIET) {
           }
         }
         [tx, tz] = fix(tx, tz);
-        const k = Math.min(1, dt * 1.5), mx = (tx - v.x) * k, mz = (tz - v.z) * k;
-        v.x += mx; v.z += mz;
-        const walking = Math.min(1, Math.hypot(mx, mz) / Math.max(dt, 0.001) / 0.6);
-        /* always turn to face the visitor; breathe a little at rest, bob a little when walking */
-        v.body.position.set(v.x, v.tall / 2 + Math.abs(Math.sin(now * 0.006 + v.phase)) * 0.025 * walking, v.z);
-        v.body.rotation.set(0, Math.atan2(pos.x - v.x, pos.z - v.z), Math.sin(now * 0.0007 + v.phase) * 0.012);
-        v.foot.position.set(v.x, 0.009, v.z);
-        /* too close to see as a person: let the figure fade */
-        const see = Math.max(0, Math.min(1, (far - 0.8) / 1.1));
-        v.body.material.opacity = REST * see; v.foot.material.opacity = 0.3 * see;
+        const k = Math.min(1, dt * 1.4);
+        v.x += (tx - v.x) * k; v.z += (tz - v.z) * k;
+        /* hover a little off the floor, sway like something seen through water, and turn to face the visitor */
+        v.body.position.set(v.x, v.tall / 2 + 0.03 + Math.sin(now * v.shimmer + v.phase) * 0.018, v.z);
+        v.body.rotation.set(0, Math.atan2(pos.x - v.x, pos.z - v.z), Math.sin(now * v.shimmer * 0.8 + v.phase) * 0.016);
+        /* each one comes and goes a little, on its own slow breath. Very close, it fades away entirely. */
+        const breath = 0.78 + 0.22 * Math.sin(now * v.shimmer * 1.7 + v.phase * 2);
+        v.body.material.opacity = REST * breath * Math.max(0, Math.min(1, (far - 0.9) / 1.3));
       }
     };
   }
