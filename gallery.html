@@ -32,6 +32,12 @@
     .card > span { display: block; margin-top: 2px; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: #77746e; white-space: nowrap; }
     .pill { font: 500 13px/1 "Inter Tight", system-ui, sans-serif; color: #141414; text-decoration: none; height: 40px; padding: 0 16px; display: inline-flex; align-items: center; border-radius: 999px; background: rgba(247, 245, 241, .88); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(20, 20, 20, .14); cursor: var(--cur-point); white-space: nowrap; flex: none; }
     @media (max-width: 520px) { .card { padding: 5px 9px 6px; } .card > span { font-size: 8px; letter-spacing: .1em; } .card b { font-size: 14px; } .top { top: calc(10px + env(safe-area-inset-top, 0px)); left: calc(10px + env(safe-area-inset-left, 0px)); right: 10px; } }
+    /* The title card greets the visitor, then steps aside. It fades once they
+       start to move, and returns whenever the controls legend is open. */
+    #titleCard { transition: opacity .6s; }
+    #titleCard.away { opacity: 0; pointer-events: none; }
+    /* a phone held sideways is wide but very short: use the small sizes there too */
+    @media (max-height: 520px) { .card { padding: 5px 9px 6px; } .card > span { font-size: 8px; letter-spacing: .1em; } .card b { font-size: 14px; } .card .extra { display: none; } .pill { height: 34px; } .tool { width: 34px; } .top { top: calc(10px + env(safe-area-inset-top, 0px)); } }
     /* on a phone the card keeps only its essential words */
     .card .extra { font-style: normal; }
     @media (max-width: 520px) { .card .extra { display: none; } }
@@ -101,7 +107,7 @@
   <div class="veil" id="veil"><div>Hanging the works<i><b id="veilBar"></b></i></div></div>
 
   <div class="ui top">
-    <div class="card"><b>Blue Gallery</b><span><i class="extra">Isaac Maimon &middot; </i>The Landscape Within</span></div>
+    <div class="card" id="titleCard"><b>Blue Gallery</b><span><i class="extra">Isaac Maimon &middot; </i>The Landscape Within</span></div>
     <div class="tools">
       <button class="pill sound" id="soundBtn" aria-pressed="false" aria-label="Sound">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5z"/><path class="waves" d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/></svg>

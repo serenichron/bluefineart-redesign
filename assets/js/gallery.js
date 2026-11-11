@@ -672,7 +672,12 @@ let down = null;
    visitor moves. After that it only opens or closes when they ask. */
 const legend = document.getElementById("legend"), legendTab = document.getElementById("legendTab");
 let tucked = false;
-const setLegend = (open) => { legend.classList.toggle("open", open); legendTab.setAttribute("aria-expanded", open); };
+const titleCard = document.getElementById("titleCard");
+const setLegend = (open) => {
+  legend.classList.toggle("open", open); legendTab.setAttribute("aria-expanded", open);
+  /* the title card keeps the legend's hours: on show at first, away once the visitor is looking at art */
+  if (titleCard) titleCard.classList.toggle("away", !open);
+};
 const tuck = () => { if (!tucked) { tucked = true; setLegend(false); } };
 legendTab.addEventListener("click", () => { tucked = true; setLegend(!legend.classList.contains("open")); });
 
