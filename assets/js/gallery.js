@@ -431,68 +431,26 @@ if (QUIET) {
   }
 
   /* --- other visitors ---
-     Phantoms, painted like watercolour. Each is a head and one long wash of
-     colour for the body, with soft, wandering edges, thinning to nothing
-     before it reaches the floor. They are flat, and always turn to face the
-     visitor. They give the room scale and a sense of company. They are not
+     Phantoms, painted in watercolour: soft figures in muted colours that thin
+     to nothing before they reach the floor. They are flat pictures that always
+     turn to face the visitor. They give the room scale and a sense of company. They are not
      characters.
 
      They are scattered afresh on every visit: some alone, some in pairs, some
      in threes, some at a painting, some out in the room. --- */
   {
     const any = Math.random, between = (lo, hi) => lo + any() * (hi - lo);
-    const bell = () => (any() + any() + any() - 1.5) / 1.5;          /* a soft random number around zero */
-    /* Watercolour, the way a painter's wash behaves: take an outline, make
-       its edge wander, and lay many pale copies over each other. Where the
-       copies agree the colour is deep. Where they differ it thins to a soft,
-       uneven edge. */
-    function wander(pts, rounds, by) {
-      for (let r = 0; r < rounds; r++) {
-        const out = [];
-        for (let i = 0; i < pts.length; i++) {
-          const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % pts.length], len = Math.hypot(x1 - x0, y1 - y0);
-          out.push([x0, y0], [(x0 + x1) / 2 + bell() * len * by, (y0 + y1) / 2 + bell() * len * by]);
-        }
-        pts = out; by *= 0.75;
-      }
-      return pts;
-    }
-    const WASHES = ["72,90,112", "92,86,116", "112,102,98", "72,106,110", "134,116,92", "96,104,120"];   /* slate, violet grey, warm grey, sea grey, ochre grey, blue grey */
-    function phantom() {
-      return paint(256, 512, (g, w, h) => {
-        const rgb = WASHES[Math.floor(any() * WASHES.length)].split(",").map(Number);
-        const lean = bell() * 14, wide = between(0.82, 1.18), cx = 128;
-        const X = (x, y) => cx + x * wide + lean * (1 - y / 480);
-        /* the body: narrow at the shoulders, wider at the hem, like a long coat seen through mist */
-        const body = [[-30, 118], [-42, 150], [-38, 250], [-50, 380], [-34, 462], [0, 474], [34, 462], [50, 380], [38, 250], [42, 150], [30, 118], [12, 102], [-12, 102]].map(([x, y]) => [X(x, y), y]);
-        const head = []; for (let k = 0; k < 10; k++) { const t = (k / 10) * 6.283; head.push([X(0, 62) + Math.cos(t) * 23, 62 + Math.sin(t) * 28]); }
-        const lay = (shape, layers, spread) => {
-          const base = wander(shape, 2, 0.22);
-          for (let i = 0; i < layers; i++) {
-            const c = rgb.map((v) => Math.round(v + bell() * 16));
-            g.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.045)`;
-            g.beginPath(); wander(base, 3, spread).forEach(([x, y], k) => g[k ? "lineTo" : "moveTo"](x, y)); g.closePath(); g.fill();
-          }
-        };
-        lay(body, 34, 0.5); lay(head, 26, 0.42);
-        /* a few blooms, where wet paint has spread into wet paper */
-        for (let i = 0; i < 5; i++) {
-          const bx = X(bell() * 26, 280), by = between(140, 420), br = between(18, 46);
-          const r = g.createRadialGradient(bx, by, 0, bx, by, br);
-          r.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.16)`); r.addColorStop(1, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
-          g.fillStyle = r; g.fillRect(bx - br, by - br, br * 2, br * 2);
-        }
-        /* the grain of the paper: tiny flecks where no paint settled */
-        g.globalCompositeOperation = "destination-out";
-        for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(0,0,0,${between(0.05, 0.22)})`; g.fillRect(any() * w, any() * h, between(0.8, 2.2), between(0.8, 2.2)); }
-        /* the wash thins towards the floor and is gone before it gets there */
-        g.globalCompositeOperation = "destination-in";
-        const v = g.createLinearGradient(0, 0, 0, h);
-        v.addColorStop(0, "rgba(0,0,0,1)"); v.addColorStop(0.5, "rgba(0,0,0,.95)"); v.addColorStop(0.92, "rgba(0,0,0,0)");
-        g.fillStyle = v; g.fillRect(0, 0, w, h);
-      });
-    }
-    const paintings = Array.from({ length: 8 }, phantom);            /* eight different phantoms, shared out among the crowd */
+    /* Twelve figures, painted in watercolour and saved as pictures with clear
+       backgrounds (assets/img/phantoms). Most are seen from behind or from the
+       side, as people are when they look at paintings. The .png files are the
+       originals. The page loads the lighter .webp copies made from them. */
+    const paintings = Array.from({ length: 12 }, (_, i) => {
+      const t = loader.load(`assets/img/phantoms/figure-${String(i + 1).padStart(2, "0")}.webp`);
+      t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return t;
+    });
+    /* In every picture the top of the head sits 6 percent down from the top edge. */
+    const HEAD_ROOM = 0.94;
 
     /* ---- where they stand, and how they move ----
        The crowd is made of small parties: one, two or three phantoms that keep
@@ -527,14 +485,17 @@ if (QUIET) {
       parties.push({ x, z, size, turn, wait: between(10, 70) });
       n += size;
     }
-    const REST = 0.36;                                               /* how much of a phantom shows, at most */
+    const REST = 0.5;                                                /* how much of a phantom shows, at most */
     visitors = [];
+    /* deal the twelve figures out in a shuffled order, so each visit shows a different crowd */
+    const order = Array.from({ length: 12 }, (_, i) => i).sort(() => any() - 0.5);
     for (const party of parties) for (let k = 0; k < party.size; k++) {
       const tall = between(1.56, 1.9), reach = party.size > 1 ? between(0.34, 0.5) : 0, at = party.turn + (k / party.size) * 6.283;
-      const body = new THREE.Mesh(new THREE.PlaneGeometry(tall / 2, tall), basic({ map: paintings[visitors.length % paintings.length], transparent: true, opacity: 0, depthWrite: false }));
+      const high = tall / HEAD_ROOM;      /* the picture is a little taller than the person in it */
+      const body = new THREE.Mesh(new THREE.PlaneGeometry(high / 2, high), basic({ map: paintings[order[visitors.length % order.length]], transparent: true, opacity: 0, depthWrite: false }));
       body.scale.x = any() < 0.5 ? -1 : 1; body.renderOrder = 6; scene.add(body);
       const ox = Math.cos(at) * reach, oz = Math.sin(at) * reach;
-      visitors.push({ party, ox, oz, x: party.x + ox, z: party.z + oz, tall, body, phase: any() * 60, shimmer: between(0.0004, 0.0009) });
+      visitors.push({ party, ox, oz, x: party.x + ox, z: party.z + oz, tall: high, body, phase: any() * 60, shimmer: between(0.0004, 0.0009) });
     }
 
     /* The painting the visitor is looking at: the one they walked up to, or
