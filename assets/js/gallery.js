@@ -30,8 +30,25 @@ const SEAT = { x: 0, z: -3.4, w: 2, d: 0.5, h: 0.42 };
 const PLINTH = { x: -1.25, z: -0.95, w: 0.45, h: 1.05 };
 const SPOT_BACK = 1.6, TRACK_Y = H - 0.4, BLUE = 0x00aeef;
 
-/* Where each work hangs: title, wall, and distance along that wall. */
-const PLAN = [
+/* The show in this room. A page can bring its own (window.BG_SHOW, written by
+   tools/make_show.py). Without one, the room hangs the current exhibition. */
+const SHOW = window.BG_SHOW || (window.BG || {}).exhibition || {};
+const ARTIST = SHOW.artist || "Isaac Maimon";
+/* The other visitors and their voices are parked: off, but all still here.
+   To bring them back on a page, add data-people="on" to its <body>, or open
+   the page with ?people=1 at the end of its address. */
+const PEOPLE = QUIET && (document.body.dataset.people === "on" || /[?&]people=1\b/.test(location.search));
+
+/* A page can ask for the room with the lights down. On its <body>,
+   data-dim="0.4" dims the room part of the way (0 is the bright room, 1 the
+   dark one), and data-mood="dark" is the same as data-dim="1". The room itself
+   goes dim. The paintings, their lamps and the light the lamps throw on the
+   wall stay as they are, so the works carry the room. */
+const DIM = !QUIET ? 0 : document.body.dataset.mood === "dark" ? 1 : Math.max(0, Math.min(1, parseFloat(document.body.dataset.dim) || 0));
+const DARK = DIM > 0;
+
+/* Where each work hangs: title, wall, and distance along that wall. A show can bring its own plan. */
+const PLAN = SHOW.plan || [
   ["The Heart Of The Land", "part", 0],
   ["Colors Igniting", "entry", -2.75], ["Reflections In Bloom", "entry", 2.75],
   ["Promises Ahead", "far", -2.1], ["Black & White Quiet", "far", 2.1],
@@ -55,7 +72,9 @@ const BLOCKS = [
 
 /* "53 × 76 1/2 in" -> [height, width] in metres */
 const parseIn = (s) => s.replace(" in", "").split("×").map((p) => p.trim().split(" ").reduce((a, t) => a + (t.includes("/") ? t.split("/")[0] / t.split("/")[1] : +t), 0) * 0.0254);
-const works = ((window.BG || {}).exhibition || {}).works || [];
+const works = SHOW.works || [];
+/* a show's own pictures join the same list as the first room's, under a name of their own */
+for (const w of works) if (w.files && !w.img) { w.img = w.files.b; (window.BG_IMG = window.BG_IMG || {})[w.img] = w.files; }
 const slots = PLAN.map(([title, wall, s]) => {
   const w = works.find((x) => x.title === title);
   const [h, wd] = w ? parseIn(w.in) : [1.47, 1.47];
@@ -70,7 +89,7 @@ try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 catch (e) { document.getElementById("fail").style.display = "grid"; throw e; }
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(QUIET ? 0xdedcd7 : 0xe9e5dd);
+scene.background = new THREE.Color(QUIET ? 0xdedcd7 : 0xe9e5dd).lerp(new THREE.Color(0x17181b), DIM);
 const camera = new THREE.PerspectiveCamera(62, 1, 0.05, 60);
 camera.rotation.order = "YXZ";
 
@@ -389,14 +408,14 @@ if (QUIET) {
      would letter it on the wall: artist, title, dates, a short introduction, and
      a line for the gallery. The lead work hangs on the front, facing the door. --- */
   {
-    const EX = (window.BG || {}).exhibition || {}, TW = 3.4, TH = 2.3, PX = 640;
+    const EX = SHOW, TW = 3.4, TH = 2.3, PX = 640;
     const at = new THREE.Vector3(0, PART.lift + PART.h / 2, PART.z - PART.t / 2);
     const mat = basic({ transparent: true, opacity: 0, depthWrite: false });
     const m = plane(TW, TH, mat, at.x, at.y, at.z - 0.004, Math.PI, 0, true);
     m.userData.text = { p: at, n: new THREE.Vector3(0, 0, -1), w: TW, h: TH };
     afterFonts.push(() => {
       mat.map = paint(TW * PX, TH * PX, (g, w, h) => {
-        const INK = "#1c2328", X0 = 110, WIDE = 1780;
+        const INK = DIM > 0.5 ? "#ebe7df" : "#1c2328", X0 = 110, WIDE = 1780;
         const wrap = (text, y, lead) => {
           let line = "";
           for (const word of text.split(/\s+/)) {
@@ -409,7 +428,7 @@ if (QUIET) {
         g.fillStyle = INK; g.textBaseline = "alphabetic";
         g.font = '500 46px "Inter Tight", system-ui, sans-serif';
         if ("letterSpacing" in g) g.letterSpacing = "9px";
-        g.fillText((EX.artist || "Isaac Maimon").toUpperCase(), X0, 190);
+        g.fillText(ARTIST.toUpperCase(), X0, 190);
         if ("letterSpacing" in g) g.letterSpacing = "0px";
         g.font = 'italic 205px "Instrument Serif", "Times New Roman", serif';
         g.fillText(EX.title || "The Landscape Within", X0 - 8, 410);
@@ -437,8 +456,10 @@ if (QUIET) {
      characters.
 
      They are scattered afresh on every visit: some alone, some in pairs, some
-     in threes, some at a painting, some out in the room. --- */
-  {
+     in threes, some at a painting, some out in the room.
+
+     Parked for now: see PEOPLE at the top of this file. --- */
+  if (PEOPLE) {
     const any = Math.random, between = (lo, hi) => lo + any() * (hi - lo);
     /* Twelve figures, painted in watercolour and saved as pictures with clear
        backgrounds (assets/img/phantoms). Most are seen from behind or from the
@@ -560,9 +581,13 @@ if (QUIET) {
         /* glide there. Quicker when making room for the visitor, slower when just drifting. */
         const gx = tx - v.x, gz = tz - v.z, gap = Math.hypot(gx, gz);
         if (gap > 0.002) {
-          const speed = trouble(v.x, v.z, look) > 0 ? 2.1 : 0.55, step = Math.min(gap, speed * dt, gap * dt * 3 + 0.002);
+          /* an unhurried walking pace when making room, a slow stroll otherwise. The pace
+             builds up and eases off, so nobody darts away. */
+          const want = trouble(v.x, v.z, look) > 0 ? 0.95 : 0.4;
+          v.pace = (v.pace || 0) + (want - (v.pace || 0)) * Math.min(1, dt * 1.6);
+          const step = Math.min(gap, v.pace * dt, gap * dt * 2 + 0.002);
           v.x += (gx / gap) * step; v.z += (gz / gap) * step;
-        }
+        } else v.pace = 0;
         const far = Math.hypot(v.x - pos.x, v.z - pos.z);
         /* hover a little off the floor, sway like something seen through water, and turn to face the visitor */
         v.body.position.set(v.x, v.tall / 2 + 0.03 + Math.sin(now * v.shimmer + v.phase) * 0.018, v.z);
@@ -630,7 +655,7 @@ function lamp(s) {
   for (const sx of [-1, 1]) { const arm = new THREE.Mesh(lampGeo.arm, lampBronze); arm.position.set(sx * len * 0.3, 0, -OUT / 2); bar.add(arm); }
   scene.add(bar); reflect(bar);
   /* light on the wall, behind and around the lamp */
-  const halo = new THREE.Mesh(new THREE.PlaneGeometry(len + 0.9, 0.9), basic({ map: poolTex, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(len + 0.9, 0.9), basic({ map: poolTex, transparent: true, opacity: (s.w < 1 ? 0.13 : 0.3) * (1 + 0.5 * DIM), blending: THREE.AdditiveBlending, depthWrite: false }));
   halo.position.copy(s.p).addScaledVector(s.n, 0.007); halo.position.y = s.p.y + s.h / 2 + UP - 0.1;
   halo.lookAt(halo.position.clone().add(s.n)); scene.add(halo);
   /* light down the face of the painting */
@@ -638,9 +663,24 @@ function lamp(s) {
   s.wash.position.copy(s.p).addScaledVector(s.n, 0.012 + DEPTH + 0.002);
   s.wash.lookAt(s.wash.position.clone().add(s.n)); scene.add(s.wash);
 }
-const dropTex = paint(128, 128, (g, w, h) => {
-  for (let i = 0; i < 12; i++) { g.fillStyle = "rgba(20,14,8,.085)"; const e = 4 + i * 2.2; g.beginPath(); g.roundRect(e, e, w - e * 2, h - e * 2, 26 - i * 1.6); g.fill(); }
-});
+/* The shadow a canvas throws on the wall behind it. The canvas stands only
+   4 cm off the wall and is lit from above, so the shadow is small: a dark,
+   tight line where the canvas meets the wall, and a soft edge a few
+   centimetres wide that falls mostly below. It is drawn to the true size of
+   each work, so a small canvas gets the same few centimetres as a large one. */
+const DROP = { edge: 0.14, perM: 190 };          /* room left around the canvas for the shadow, and drawing detail per metre */
+function dropTexture(s) {
+  const k = DROP.perM, e = DROP.edge * k;
+  return paint(Math.round((s.w + DROP.edge * 2) * k), Math.round((s.h + DROP.edge * 2) * k), (g, w, h) => {
+    /* [how soft, how far it falls, how dark], in metres */
+    for (const [soft, fall, dark] of [[0.085, 0.034, 0.3], [0.03, 0.014, 0.34], [0.008, 0.004, 0.4]]) {
+      g.shadowColor = `rgba(26,20,14,${dark})`; g.shadowBlur = soft * k; g.shadowOffsetY = fall * k;
+      g.fillStyle = "#000"; g.fillRect(e, e, w - e * 2, h - e * 2);
+    }
+    /* only the shadow is wanted, not the shape that threw it */
+    g.shadowColor = "transparent"; g.clearRect(e + 2, e + 2, w - e * 2 - 4, h - e * 2 - 4);
+  });
+}
 const cardDropTex = paint(256, 128, (g, w, h) => {
   for (let i = 0; i < 6; i++) { g.fillStyle = "rgba(20,14,8,.17)"; g.fillRect(i, i, w - i * 2, h - i * 2); }
 });
@@ -653,7 +693,7 @@ function labelTexture(s) {
     g.fillStyle = "#ffffff"; g.fillRect(0, 0, w, h);
     g.strokeStyle = "rgba(20,20,20,.3)"; g.lineWidth = 2; g.strokeRect(1, 1, w - 2, h - 2);
     g.fillStyle = "#141414"; g.textBaseline = "top";
-    g.font = '500 30px "Inter Tight", system-ui, sans-serif'; g.fillText("Isaac Maimon", 36, 34);
+    g.font = '500 30px "Inter Tight", system-ui, sans-serif'; g.fillText(ARTIST, 36, 34);
     g.font = 'italic 46px "Instrument Serif", "Times New Roman", serif'; g.fillText(s.title, 36, 82, w - 72);
     g.fillStyle = "#55524d"; g.font = '400 25px "Inter Tight", system-ui, sans-serif';
     g.fillText(s.work ? s.work.medium : "", 36, 160, w - 72);
@@ -712,7 +752,7 @@ const headGeo = new THREE.CylinderGeometry(0.045, 0.05, 0.17, 20).rotateX(Math.P
 const headMat = basic({ color: 0xf6f4ef }), lensMat = basic({ color: 0xfff6dc });
 for (const s of slots) {
   /* pool on the wall */
-  const pool = new THREE.Mesh(new THREE.PlaneGeometry(s.w + 1.5, s.h + 1.7), basic({ map: poolTex, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(s.w + 1.5, s.h + 1.7), basic({ map: poolTex, transparent: true, opacity: (s.w < 1 ? 0.07 : 0.2) * (1 + 0.9 * DIM), blending: THREE.AdditiveBlending, depthWrite: false }));
   pool.position.copy(s.p).addScaledVector(s.n, 0.006); pool.position.y += 0.12;
   pool.lookAt(pool.position.clone().add(s.n)); scene.add(pool); s.pool = pool;
   if (!QUIET) {
@@ -726,8 +766,8 @@ for (const s of slots) {
   }
   if (!s.work) continue;
   /* shadow on the wall, then the canvas: a 4 cm deep box with the painting on its face */
-  const drop = new THREE.Mesh(new THREE.PlaneGeometry(s.w + 0.2, s.h + 0.2), basic({ map: dropTex, transparent: true, opacity: 0.6, depthWrite: false }));
-  drop.position.copy(s.p).addScaledVector(s.n, 0.009); drop.position.y -= 0.035;
+  const drop = new THREE.Mesh(new THREE.PlaneGeometry(s.w + DROP.edge * 2, s.h + DROP.edge * 2), basic({ map: dropTexture(s), transparent: true, depthWrite: false }));
+  drop.position.copy(s.p).addScaledVector(s.n, 0.009);
   drop.lookAt(drop.position.clone().add(s.n)); scene.add(drop);
   const edge = basic({ color: new THREE.Color((IMG[s.work.img] || {}).c || "#888888").multiplyScalar(0.55) });
   const edgeTop = basic({ color: new THREE.Color((IMG[s.work.img] || {}).c || "#888888").multiplyScalar(0.8) });
@@ -1062,9 +1102,9 @@ fonts.then(() => { for (const s of slots) if (s.label) { s.label.material.map = 
   const remember = (key, v) => { try { localStorage.setItem(key, v); } catch (e) { /* private window: nothing to keep */ } };
   const tracks = [
     { id: "musicBtn", key: "bg-gallery-sound", src: "assets/audio/moonlight.mp3", level: 0.32, name: "Music" },
-    { id: "voicesBtn", key: "bg-gallery-voices", src: "assets/audio/voices.mp3", level: 0.42, name: "Voices" },
+    { id: "voicesBtn", key: "bg-gallery-voices", src: "assets/audio/voices.mp3", level: 0.3, name: "Voices" },
   ].map((t) => Object.assign(t, { btn: document.getElementById(t.id), on: recall(t.key) !== "off", audio: null, fade: 0, canFade: true, started: false }))
-    .filter((t) => t.btn);
+    .filter((t) => { if (t.btn && t.id === "voicesBtn") t.btn.hidden = !PEOPLE; return t.btn && !t.btn.hidden; });
   const show = (t) => { t.btn.setAttribute("aria-pressed", t.on); t.btn.lastElementChild.textContent = t.name + (t.on ? " on" : " off"); };
   /* Start or stop one sound, to match its switch. Gives back a promise of
      whether the browser let it play. A phone refuses unless this runs inside
@@ -1222,5 +1262,23 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 /* for tests and for the next phases */
+/* ---------- Lights down ----------
+   Dim every surface of the room in one pass, by tinting what it is painted
+   with. Left alone: the paintings and their reflections, the cards, the
+   lettering on the wall, the glowing strip of each lamp, and every patch of
+   light (those are the ones that add brightness to what is behind them). */
+if (DARK) {
+  const keep = new Set([lampGlow]), done = new Set(), TINT = new THREE.Color(0xffffff).lerp(new THREE.Color(0x3a3d44), DIM);
+  const each = (m, f) => (Array.isArray(m) ? m : [m]).forEach(f);
+  for (const s of slots) { if (s.art) each(s.art.material, (m) => keep.add(m)); if (s.label) keep.add(s.label.material); }
+  scene.traverse((o) => {
+    if (!o.isMesh || o.userData.text) return;
+    each(o.material, (m) => {
+      if (keep.has(m) || done.has(m) || m.blending === THREE.AdditiveBlending || !m.color) return;
+      done.add(m); m.color.multiply(TINT);
+    });
+  });
+}
+
 window.BG_ROOM = { scene, camera, slots, walkTo, tick, look: (y, p = 0) => { yaw = y; pitch = p; }, place: (x, z) => { pos.x = x; pos.z = z; path = []; } };
 })();

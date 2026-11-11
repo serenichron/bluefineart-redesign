@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- password screen: must load before anything else on the page -->
+  <script src="assets/js/gate.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Virtual room 2 | Blue Gallery</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #e9e5dd; color: #141414; font-family: "Inter Tight", system-ui, sans-serif; }
+    /* The room draws its own cursors: a fine dark ring with a white rim. Some
+       systems use white cursors, which vanish against the gallery wall.
+       Open ring: look around. Small ring: dragging. Ring with a dot: click here. */
+    :root {
+      --cur-look: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='white' stroke-width='3.5'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23141414' stroke-width='1.3'/%3E%3C/svg%3E") 16 16, grab;
+      --cur-hold: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='5.5' fill='none' stroke='white' stroke-width='3.5'/%3E%3Ccircle cx='16' cy='16' r='1.2' fill='white' stroke='white' stroke-width='3.5'/%3E%3Ccircle cx='16' cy='16' r='5.5' fill='none' stroke='%23141414' stroke-width='1.3'/%3E%3Ccircle cx='16' cy='16' r='1.2' fill='%23141414' stroke='%23141414' stroke-width='1.3'/%3E%3C/svg%3E") 16 16, grabbing;
+      --cur-point: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='white' stroke-width='3.5'/%3E%3Ccircle cx='16' cy='16' r='1.9' fill='white' stroke='white' stroke-width='3.5'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23141414' stroke-width='1.3'/%3E%3Ccircle cx='16' cy='16' r='1.9' fill='%23141414' stroke='%23141414' stroke-width='1.3'/%3E%3C/svg%3E") 16 16, pointer;
+    }
+    #room { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: var(--cur-look); outline: none; }
+    #room.over { cursor: var(--cur-point); }
+    #room.dragging { cursor: var(--cur-hold); }
+    .ui { position: fixed; z-index: 2; pointer-events: none; }
+    .ui > * { pointer-events: auto; }
+    .top { top: calc(16px + env(safe-area-inset-top, 0px)); left: calc(16px + env(safe-area-inset-left, 0px)); right: 16px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .card { background: rgba(247, 245, 241, .88); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(20, 20, 20, .1); border-radius: 4px; padding: 7px 11px 8px; }
+    .card b { display: block; font-family: "Instrument Serif", serif; font-weight: 400; font-size: 17px; line-height: 1.1; }
+    .card > span { display: block; margin-top: 2px; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: #77746e; white-space: nowrap; }
+    .pill { font: 500 13px/1 "Inter Tight", system-ui, sans-serif; color: #141414; text-decoration: none; height: 40px; padding: 0 16px; display: inline-flex; align-items: center; border-radius: 999px; background: rgba(247, 245, 241, .88); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(20, 20, 20, .14); cursor: var(--cur-point); white-space: nowrap; flex: none; }
+    @media (max-width: 520px) { .card { padding: 5px 9px 6px; } .card > span { font-size: 8px; letter-spacing: .1em; } .card b { font-size: 14px; } .top { top: calc(10px + env(safe-area-inset-top, 0px)); left: calc(10px + env(safe-area-inset-left, 0px)); right: 10px; } }
+    /* The title card greets the visitor, then steps aside. It fades once they
+       start to move, and returns whenever the controls legend is open. */
+    #titleCard { transition: opacity .6s; }
+    #titleCard.away { opacity: 0; pointer-events: none; }
+    /* a phone held sideways is wide but very short: use the small sizes there too */
+    @media (max-height: 520px) { .card { padding: 5px 9px 6px; } .card > span { font-size: 8px; letter-spacing: .1em; } .card b { font-size: 14px; } .card .extra { display: none; } .pill { height: 34px; } .tool { width: 34px; } .top { top: calc(10px + env(safe-area-inset-top, 0px)); } }
+    /* on a phone the card keeps only its essential words */
+    .card .extra { font-style: normal; }
+    @media (max-width: 520px) { .card .extra { display: none; } }
+    /* the buttons at the top right: sound, and full screen */
+    .tools { display: flex; gap: 8px; flex: none; }
+    .tool { width: 40px; padding: 0; justify-content: center; }
+    .tool svg { width: 17px; height: 17px; }
+    .tool .shrink, .tool[aria-pressed="true"] .grow { display: none; }
+    .tool[aria-pressed="true"] .shrink { display: inline; }
+    .pill[hidden] { display: none; }
+    @media (max-width: 520px) { .pill { height: 34px; } .tool { width: 34px; } .tools { gap: 6px; } }
+    .pill:hover, .pill[aria-pressed="true"] { background: #141414; color: #fff; }
+    .sound { gap: 8px; padding: 0 16px 0 12px; }
+    .sound svg { width: 17px; height: 17px; }
+    /* on a small or short screen the two sound switches keep only their icons */
+    @media (max-width: 760px), (max-height: 520px) { .sound span { display: none; } .sound { padding: 0; width: 40px; justify-content: center; } }
+    @media (max-width: 520px), (max-height: 520px) { .sound { width: 34px; } }
+    .pill:focus-visible { outline: 2px solid #00aeef; outline-offset: 3px; }
+    .bottom { left: calc(16px + env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+
+    /* Controls legend: the same card as the title, folded down to its heading once the visitor moves. */
+    .legend { padding: 0; overflow: hidden; }
+    .legend-tab { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 18px; width: 100%; padding: 11px 14px; cursor: var(--cur-point); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #77746e; transition: color .2s; }
+    .legend-tab:hover { color: #141414; }
+    .legend-tab:focus-visible { outline: 2px solid #00aeef; outline-offset: -2px; }
+    .legend-tab i { position: relative; width: 10px; height: 10px; flex: none; }
+    .legend-tab i::before, .legend-tab i::after { content: ""; position: absolute; left: 0; top: 4.5px; width: 10px; height: 1px; background: currentColor; transition: transform .3s; }
+    .legend-tab i::after { transform: rotate(90deg); }
+    .legend.open .legend-tab i::after { transform: none; }
+    .legend-body { display: grid; grid-template-rows: 0fr; grid-template-columns: 0fr; transition: grid-template-rows .35s cubic-bezier(.2, .7, .2, 1), grid-template-columns .35s cubic-bezier(.2, .7, .2, 1); }
+    .legend.open .legend-body { grid-template-rows: 1fr; grid-template-columns: 1fr; }
+    .legend-body > div { overflow: hidden; min-height: 0; min-width: 0; visibility: hidden; transition: visibility 0s .35s; }
+    .legend.open .legend-body > div { visibility: visible; transition-delay: 0s; }
+    .legend dl { margin: 0; }
+    .legend dl > div { display: grid; grid-template-columns: 118px auto; gap: 16px; padding: 7px 14px; border-top: 1px solid rgba(20, 20, 20, .08); font-size: 13px; line-height: 1.3; white-space: nowrap; }
+    .legend dl > div:last-child { padding-bottom: 11px; }
+    .legend dt { font-weight: 500; }
+    .legend dd { margin: 0; color: #55524d; }
+    .legend .credit { margin: 0; padding: 9px 14px 11px; border-top: 1px solid rgba(20, 20, 20, .08); font-size: 11.5px; line-height: 1.4; color: #77746e; white-space: nowrap; }
+    .legend .credit a { color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: var(--cur-point); }
+    .legend dl > div:last-child { padding-bottom: 7px; }
+    .legend .t { display: none; }
+    @media (hover: none) { .legend .m { display: none !important; } .legend .t { display: inline; } }
+
+    /* Shown only while the view is zoomed in on a details card. */
+    .step-back { position: fixed; z-index: 2; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); gap: 8px; padding: 0 16px 0 12px; transform: translate(-50%, 10px); opacity: 0; pointer-events: none; transition: opacity .3s, transform .3s cubic-bezier(.2, .7, .2, 1), background .2s, color .2s; }
+    .step-back.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+    .step-back svg { width: 16px; height: 16px; }
+    @media (prefers-reduced-motion: reduce) { .legend-body, .legend-tab i::after, .step-back { transition: none; } }
+    /* Shown while the paintings load. It sits over the room and under the title. */
+    .veil { position: fixed; inset: 0; z-index: 1; background: #e9e5dd; display: grid; place-items: center; transition: opacity .8s ease; }
+    .veil.gone { opacity: 0; pointer-events: none; }
+    .veil div { width: min(220px, 50vw); text-align: center; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #77746e; }
+    .veil i { display: block; height: 1px; margin-top: 14px; background: rgba(20, 20, 20, .14); }
+    .veil b { display: block; height: 1px; background: #141414; transform: scaleX(0); transform-origin: left; transition: transform .3s; }
+    .legend { transition: opacity .6s; }
+    body:has(.veil:not(.gone)) .legend { opacity: 0; }
+    .fail { position: fixed; inset: 0; display: none; place-items: center; padding: 24px; text-align: center; font-size: 15px; }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body data-room="quiet" data-dim="0.35">
+  <canvas id="room" tabindex="0" aria-label="A 3D gallery room with fourteen paintings by Lenner Gogli. Drag to look around. Use the arrow keys to walk."></canvas>
+
+  <div class="veil" id="veil"><div>Hanging the works<i><b id="veilBar"></b></i></div></div>
+
+  <div class="ui top">
+    <div class="card" id="titleCard"><b>Blue Gallery</b><span><i class="extra">Lenner Gogli &middot; </i>Abstract Originals</span></div>
+    <div class="tools">
+      <button class="pill sound" id="musicBtn" aria-pressed="false" aria-label="Music">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>
+        <span>Music off</span>
+      </button>
+      <button class="pill sound" id="voicesBtn" aria-pressed="false" aria-label="Voices" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h7A2.5 2.5 0 0 1 16 6.5v4A2.5 2.5 0 0 1 13.500 13H9l-3.5 3v-3.200A2.500 2.500 0 0 1 4 10.500z"/><path d="M19 9.500a2.500 2.500 0 0 1 1.500 2.300v3.200a2.500 2.500 0 0 1-2 2.450V20l-2.800-2.500H13"/></svg>
+        <span>Voices off</span>
+      </button>
+      <button class="pill tool" id="fullBtn" aria-pressed="false" aria-label="Full screen" title="Full screen" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="grow" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><path class="shrink" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="ui bottom">
+    <div class="card legend open" id="legend">
+      <button class="legend-tab" id="legendTab" aria-expanded="true" aria-controls="legendList"><span>Controls</span><i aria-hidden="true"></i></button>
+      <div class="legend-body"><div>
+        <dl id="legendList">
+          <div><dt>Drag</dt><dd>Look around</dd></div>
+          <div><dt><span class="m">Click</span><span class="t">Tap</span> a painting</dt><dd>Walk up to it</dd></div>
+          <div><dt><span class="m">Double-click</span><span class="t">Double-tap</span> it</dt><dd>Zoom into that spot</dd></div>
+          <div><dt><span class="m">Click</span><span class="t">Tap</span> its card</dt><dd>Read the details</dd></div>
+          <div><dt><span class="m">Click</span><span class="t">Tap</span> the floor</dt><dd>Walk there</dd></div>
+          <div class="m"><dt>Scroll</dt><dd>Step closer or back</dd></div>
+          <div class="m"><dt>Arrow keys</dt><dd>Walk and turn</dd></div>
+        </dl>
+        <p class="credit">Music: &lsquo;Moonlight&rsquo; by <a href="https://www.scottbuckley.com.au" target="_blank" rel="noopener">Scott Buckley</a>, released under CC-BY 4.0</p>
+      </div></div>
+    </div>
+  </div>
+  <button class="pill step-back" id="stepBack" tabindex="-1">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20 12H4m6-6-6 6 6 6"/></svg>
+    <span>Back to the painting</span>
+  </button>
+  <p class="fail" id="fail">This room needs 3D graphics, and this browser has them switched off.</p>
+
+  <script src="assets/js/show-gogli.js"></script>
+  <script src="assets/js/light-data.js"></script>
+  <script type="module">
+    /* The 3D library is a module. The room script is plain, so it also loads when
+       this page is opened straight from disk, where module files are blocked. */
+    import * as THREE from "three";
+    window.THREE = THREE;
+    const s = document.createElement("script");
+    /* Always fetch the newest script, never a copy the browser kept. While this
+       is a preview that changes daily, an old script on a new page breaks things:
+       a new button, for one, stays hidden. Drop the "?t=" part once the site is final. */
+    s.src = "assets/js/gallery.js?t=" + Date.now();
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>
