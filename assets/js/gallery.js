@@ -460,6 +460,39 @@ function artTexture(url) {
   return t;
 }
 /* the soft shadow a canvas throws on the wall behind it */
+/* Picture lamps (quiet room). Each painting has a slim bronze lamp on two short
+   arms above it, the kind galleries and collectors fit over a canvas. Three
+   things make it read as lit: the glowing strip under the lamp, a soft patch
+   of light on the wall around it, and a warm wash down the painting itself. */
+const washTex = paint(128, 128, (g, w, h) => {
+  /* brightest under the lamp, fading down the canvas and towards its ends */
+  const v = g.createLinearGradient(0, 0, 0, h);
+  v.addColorStop(0, "rgba(255,238,206,1)"); v.addColorStop(0.35, "rgba(255,238,206,.42)"); v.addColorStop(0.8, "rgba(255,238,206,0)");
+  g.fillStyle = v; g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = "destination-in";
+  const side = g.createLinearGradient(0, 0, w, 0);
+  side.addColorStop(0, "rgba(0,0,0,.25)"); side.addColorStop(0.22, "rgba(0,0,0,1)"); side.addColorStop(0.78, "rgba(0,0,0,1)"); side.addColorStop(1, "rgba(0,0,0,.25)");
+  g.fillStyle = side; g.fillRect(0, 0, w, h);
+});
+const lampGeo = { arm: new THREE.BoxGeometry(0.012, 0.012, 0.15) };
+const lampBronze = basic({ color: 0x2b2623 }), lampGlow = basic({ color: 0xfff3da });
+function lamp(s) {
+  const len = Math.min(1.1, s.w * 0.55), OUT = 0.15, UP = 0.3;      /* how far the lamp sits above the top of the canvas */
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(len, 0.03, 0.05), lampBronze);
+  bar.position.copy(s.p).addScaledVector(s.n, OUT); bar.position.y = s.p.y + s.h / 2 + UP;
+  bar.lookAt(bar.position.clone().add(s.n));
+  const strip = new THREE.Mesh(new THREE.BoxGeometry(len - 0.04, 0.006, 0.032), lampGlow); strip.position.y = -0.018; bar.add(strip);
+  for (const sx of [-1, 1]) { const arm = new THREE.Mesh(lampGeo.arm, lampBronze); arm.position.set(sx * len * 0.3, 0, -OUT / 2); bar.add(arm); }
+  scene.add(bar); reflect(bar);
+  /* light on the wall, behind and around the lamp */
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(len + 0.9, 0.9), basic({ map: poolTex, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false }));
+  halo.position.copy(s.p).addScaledVector(s.n, 0.007); halo.position.y = s.p.y + s.h / 2 + UP - 0.1;
+  halo.lookAt(halo.position.clone().add(s.n)); scene.add(halo);
+  /* light down the face of the painting */
+  s.wash = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.h), basic({ map: washTex, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }));
+  s.wash.position.copy(s.p).addScaledVector(s.n, 0.012 + DEPTH + 0.002);
+  s.wash.lookAt(s.wash.position.clone().add(s.n)); scene.add(s.wash);
+}
 const dropTex = paint(128, 128, (g, w, h) => {
   for (let i = 0; i < 12; i++) { g.fillStyle = "rgba(20,14,8,.085)"; const e = 4 + i * 2.2; g.beginPath(); g.roundRect(e, e, w - e * 2, h - e * 2, 26 - i * 1.6); g.fill(); }
 });
@@ -559,6 +592,7 @@ for (const s of slots) {
   art.lookAt(art.position.clone().add(s.n));
   reflect(art);                   /* before the line below: a copy cannot carry a link back to its own slot */
   art.userData.slot = s; scene.add(art); solid.push(art);
+  if (QUIET) lamp(s);
   /* label card, to the right of the work as you face it */
   const right = s.n.clone().negate().cross(UP);
   s.label = new THREE.Mesh(new THREE.PlaneGeometry(CARD.w, CARD.h), basic({ color: 0xffffff }));
@@ -785,7 +819,14 @@ canvas.addEventListener("wheel", (e) => {
 
 const keys = new Set();
 const MOVE = { ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1], KeyA: [-1, 0], KeyD: [1, 0] };
-addEventListener("keydown", (e) => { if (MOVE[e.code] || e.code === "ArrowLeft" || e.code === "ArrowRight") { keys.add(e.code); e.preventDefault(); tuck(); } });
+/* Keys walk the room, but never while the visitor is typing in a field.
+   W, A, S and D are walking keys, and they are also letters: without this
+   check they could not be typed into the password box. */
+const typing = (e) => e.target instanceof Element && !!e.target.closest("input, textarea, select, [contenteditable]");
+addEventListener("keydown", (e) => {
+  if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (MOVE[e.code] || e.code === "ArrowLeft" || e.code === "ArrowRight") { keys.add(e.code); e.preventDefault(); tuck(); }
+});
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("blur", () => keys.clear());
 
@@ -879,7 +920,8 @@ function tick(dt) {
       let near = Math.max(0, Math.min(1, 1 - (far - 1.2) / 3.4));
       if (focus && sharp) near = sharp.slot === s ? 1 : near * 0.3;
       s.glow += (near - s.glow) * Math.min(1, dt * 2.4);
-      s.pool.material.opacity = 0.06 + 0.12 * s.glow;
+      s.pool.material.opacity = 0.05 + 0.1 * s.glow;
+      s.wash.material.opacity = 0.1 + 0.12 * s.glow;       /* the lamp seems to warm up as the visitor comes near */
       s.art.material[4].color.setScalar(0.92 + 0.08 * s.glow);
     }
   }
