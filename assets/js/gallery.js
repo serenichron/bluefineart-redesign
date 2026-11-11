@@ -897,34 +897,49 @@ fonts.then(() => { for (const s of slots) if (s.label) { s.label.material.map = 
     const LEVEL = 0.32, KEY = "bg-gallery-sound";
     const recall = () => { try { return localStorage.getItem(KEY); } catch (e) { return null; } };
     const remember = (v) => { try { localStorage.setItem(KEY, v); } catch (e) { /* private window: nothing to keep */ } };
-    let music = null, on = recall() !== "off", fade = 0;
+    let music = null, on = recall() !== "off", fade = 0, canFade = true, started = false;
     const show = () => { btn.setAttribute("aria-pressed", on); btn.lastElementChild.textContent = on ? "Sound on" : "Sound off"; };
-    /* glide the volume up or down over about a second, then pause when silent */
+    /* Start or stop the music, to match the switch. Gives back a promise of
+       whether the browser let it play. A phone refuses unless this runs inside
+       a tap, so a refusal is normal and the page simply tries again later. */
     function apply() {
-      if (!music) { music = new Audio("assets/audio/moonlight.mp3"); music.loop = true; music.volume = 0; }
-      if (on) music.play().catch(() => {});
+      if (!music) {
+        music = new Audio("assets/audio/moonlight.mp3"); music.loop = true;
+        /* an iPhone ignores a page's volume setting: find out, and skip the fades there */
+        music.volume = 0.5; canFade = Math.abs(music.volume - 0.5) < 0.01;
+        music.volume = canFade ? 0 : 1;
+      }
+      const played = on ? music.play().then(() => true, () => false) : Promise.resolve(true);
       clearInterval(fade);
+      if (!canFade) { if (!on) music.pause(); return played; }
+      /* glide the volume up or down over about a second, then pause when silent */
       fade = setInterval(() => {
         const goal = on ? LEVEL : 0, step = LEVEL / 20;
         music.volume = Math.max(0, Math.min(LEVEL, music.volume + Math.sign(goal - music.volume) * step));
         if (Math.abs(music.volume - goal) < step / 2) { music.volume = goal; clearInterval(fade); if (!on) music.pause(); }
       }, 50);
+      return played;
     }
-    btn.addEventListener("click", () => { on = !on; remember(on ? "on" : "off"); show(); apply(); });
-    /* The music starts with the visitor's first click or key in the room itself.
-       Nothing plays while the password screen is up, or before the room has
-       appeared. Typing the password is not a move in the room. */
+    /* The music starts with the visitor's first move in the room itself. Nothing
+       plays while the password screen is up, or before the room has appeared.
+
+       The events below are the ones a browser counts as a real action by the
+       visitor. A finger touching down does not count on a phone, but lifting
+       it does. The page keeps listening until the music has truly started. */
+    const WAKE = ["pointerup", "click", "touchend", "keydown"];
     const ready = () => shown && !document.documentElement.classList.contains("bg-locked");
-    const stopWaiting = () => { removeEventListener("pointerdown", first, true); removeEventListener("keydown", first, true); };
-    const first = (e) => {
-      if (!ready()) return;
-      stopWaiting();
-      if (on && !btn.contains(e.target)) apply();
-    };
-    addEventListener("pointerdown", first, true); addEventListener("keydown", first, true);
-    /* the password screen says when it has let the visitor in: start then, once the room is up */
+    const stopWaiting = () => WAKE.forEach((t) => removeEventListener(t, first, true));
+    const begin = () => apply().then((ok) => { if (ok && on) { started = true; stopWaiting(); } });
+    function first(e) {
+      if (started) { stopWaiting(); return; }
+      if (!on || !ready() || btn.contains(e.target)) return;
+      begin();
+    }
+    WAKE.forEach((t) => addEventListener(t, first, true));
+    btn.addEventListener("click", () => { on = !on; remember(on ? "on" : "off"); show(); begin(); });
+    /* the password screen says when it has let the visitor in: try then, once the room is up */
     addEventListener("bg-unlocked", () => {
-      const go = setInterval(() => { if (!ready()) return; clearInterval(go); stopWaiting(); if (on && !music) apply(); }, 150);
+      const go = setInterval(() => { if (!ready()) return; clearInterval(go); if (on && !started) begin(); }, 150);
     });
     show();
   }
@@ -963,7 +978,12 @@ fonts.then(() => { for (const s of slots) if (s.label) { s.label.material.map = 
 function size() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setSize(w, h, false);
-  camera.aspect = w / h; baseFov = w < h ? 80 : 62;
+  camera.aspect = w / h;
+  /* How wide the view is. A wide view shows more of the room, but it stretches
+     whatever sits near the edges of the screen. So the view is held to about
+     80 degrees from side to side, however wide the screen is. An upright phone
+     is narrow, so it is set by height instead. */
+  baseFov = w < h ? 66 : Math.max(40, Math.min(54, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(40)) / camera.aspect))));
   if (zoom === null) camera.fov = baseFov;
   camera.updateProjectionMatrix();
 }
