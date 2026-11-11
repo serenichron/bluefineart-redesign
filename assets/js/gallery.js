@@ -707,13 +707,47 @@ let backShown = false;
 const stepBack = () => { if (reading) visit(reading); else if (detail) visit(detail); else zoom = null; };
 backBtn.addEventListener("click", stepBack);
 addEventListener("keydown", (e) => { if (e.code === "Escape" && zoom !== null) stepBack(); });
+/* Two fingers on the screen pinch to zoom: spread them to zoom in, bring them
+   together to zoom back out. Moving both fingers together turns the view.
+   Zooming narrows the field of view. The visitor stays where they stand. */
+const fingers = new Map();
+let pinch = null;
+const MAX_ZOOM = 4.5;
+function spread() {
+  const [a, b] = [...fingers.values()];
+  return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+function zoomTo(fov) {
+  fov = Math.max(baseFov / MAX_ZOOM, Math.min(baseFov, fov));
+  zoom = fov > baseFov - 0.4 ? null : fov;
+  camera.fov = fov; camera.updateProjectionMatrix();
+}
 canvas.addEventListener("pointerdown", (e) => {
+  fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (fingers.size === 2) {
+    const now = spread();
+    pinch = { d: now.d, fov: camera.fov, x: now.x, y: now.y };
+    down = null; canvas.classList.remove("dragging"); ring.visible = false;
+    yawGoal = null; aim = null; path = []; tuck();
+    return;
+  }
+  if (fingers.size > 2) return;
   /* What the click lands on is settled now, on the press. By the release the
      view may have shifted a little, and the same pixel would point elsewhere. */
   down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now(), moved: 0, hit: cast(e, solid) };
-  canvas.setPointerCapture(e.pointerId); canvas.classList.add("dragging"); canvas.focus({ preventScroll: true });
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* the pointer has already gone: nothing to hold on to */ }
+  canvas.classList.add("dragging"); canvas.focus({ preventScroll: true });
 });
 canvas.addEventListener("pointermove", (e) => {
+  if (fingers.has(e.pointerId)) fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch) {
+    if (fingers.size < 2) return;
+    const now = spread(), k = (camera.fov / 62) * 0.0034;
+    zoomTo(pinch.fov * pinch.d / now.d);
+    yaw += (now.x - pinch.x) * k; pitch = Math.max(-0.7, Math.min(0.7, pitch + (now.y - pinch.y) * k));
+    pinch.x = now.x; pinch.y = now.y;
+    return;
+  }
   if (down) {
     const dx = e.clientX - down.lx, dy = e.clientY - down.ly;
     down.lx = e.clientX; down.ly = e.clientY; down.moved += Math.abs(dx) + Math.abs(dy);
@@ -733,6 +767,13 @@ canvas.addEventListener("pointermove", (e) => {
   }
 });
 const lift = (e) => {
+  fingers.delete(e.pointerId);
+  if (pinch) {
+    /* the end of a pinch is never a click, even when one finger lifts first */
+    if (fingers.size === 0) pinch = null;
+    down = null; canvas.classList.remove("dragging");
+    return;
+  }
   canvas.classList.remove("dragging");
   if (!down) return;
   const click = down.moved <= 6 && performance.now() - down.t < 500, h = down.hit;
@@ -811,6 +852,8 @@ canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 /* Wheel: step closer or further back along the line of sight. */
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
+  /* a pinch on a laptop trackpad arrives as a wheel turn with Ctrl held: zoom, do not walk */
+  if (e.ctrlKey) { yawGoal = null; aim = null; zoomTo(camera.fov * Math.exp(e.deltaY * 0.01)); tuck(); return; }
   const step = Math.max(-0.6, Math.min(0.6, -e.deltaY * 0.0025));
   path = []; yawGoal = null; aim = null; zoom = null;
   [pos.x, pos.z] = fix(pos.x - Math.sin(yaw) * step, pos.z - Math.cos(yaw) * step);
