@@ -151,6 +151,7 @@ function layFloor(mat, shadeTex) {
 const S = 48;      /* pixels per metre in the pictures painted over a floor */
 
 let floor;
+let visitors = [], moveVisitors = null;       /* the quiet room's other visitors, and what moves them */
 
 /* =====================================================================
    Room: first. The first room, kept as it was: oak floor, a grid of glowing
@@ -427,6 +428,87 @@ if (QUIET) {
       });
       mat.opacity = 1; mat.needsUpdate = true;
     });
+  }
+
+  /* --- other visitors ---
+     Soft, half-seen figures stand about the room: alone at a painting, in a
+     pair, in a group of three. They are flat shapes that always turn to face
+     the visitor, the way an architect draws people into a picture of a
+     building. They give the room scale. They are not characters.
+     When the visitor comes near, a figure steps aside. It also moves out of
+     the way when it stands between the visitor and the painting they chose. --- */
+  {
+    /* three figures, each drawn once: in trousers, in a long coat, with a bag */
+    function figure(kind) {
+      return paint(256, 512, (g, w, h) => {
+        g.fillStyle = "#3d4853"; g.shadowColor = "#3d4853"; g.shadowBlur = 7;
+        const blob = (pts) => { g.beginPath(); pts.forEach(([x, y], i) => g[i ? "lineTo" : "moveTo"](x, y)); g.closePath(); g.fill(); };
+        g.beginPath(); g.ellipse(128, 56, 24, 30, 0, 0, 7); g.fill();                      /* head */
+        g.fillRect(119, 82, 18, 20);                                                       /* neck */
+        if (kind === 1) {
+          blob([[90, 104], [166, 104], [176, 128], [172, 250], [182, 392], [74, 392], [84, 250], [80, 128]]);   /* long coat */
+          blob([[100, 388], [124, 388], [121, 496], [103, 496]]); blob([[132, 388], [156, 388], [153, 496], [135, 496]]);
+        } else {
+          blob([[88, 104], [168, 104], [178, 130], [170, 262], [166, 300], [90, 300], [86, 262], [78, 130]]);   /* jacket */
+          blob([[90, 296], [127, 296], [122, 496], [99, 496]]); blob([[129, 296], [166, 296], [157, 496], [134, 496]]);
+        }
+        blob([[78, 112], [92, 108], [86, 292], [70, 290]]); blob([[178, 112], [164, 108], [170, 292], [186, 290]]);   /* arms */
+        g.beginPath(); g.ellipse(108, 500, 17, 7, 0, 0, 7); g.fill(); g.beginPath(); g.ellipse(148, 500, 17, 7, 0, 0, 7); g.fill();
+        if (kind === 2) blob([[176, 286], [208, 286], [212, 352], [172, 352]]);            /* a bag in one hand */
+        /* the figure thins out towards the floor, so it never quite stands on it */
+        g.shadowBlur = 0; g.globalCompositeOperation = "destination-in";
+        const v = g.createLinearGradient(0, 0, 0, h);
+        v.addColorStop(0, "rgba(0,0,0,1)"); v.addColorStop(0.55, "rgba(0,0,0,.92)"); v.addColorStop(1, "rgba(0,0,0,.3)");
+        g.fillStyle = v; g.fillRect(0, 0, w, h);
+      });
+    }
+    const kinds = [figure(0), figure(1), figure(2)];
+    const shade = paint(64, 64, (g, w, h) => { const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, "rgba(20,20,24,.5)"); r.addColorStop(1, "rgba(20,20,24,0)"); g.fillStyle = r; g.fillRect(0, 0, w, h); });
+    /* where each one stands: x, z, height in metres, which drawing, mirrored or not */
+    const HOMES = [
+      [-2.9, 4.2, 1.74, 0, 1],                                   /* alone, at a painting on the left */
+      [2.7, -0.2, 1.66, 1, -1],                                  /* alone, at a painting on the right */
+      [-1.9, -5.0, 1.8, 2, 1],                                   /* alone, at the far wall */
+      [2.95, 4.35, 1.78, 0, -1], [2.45, 4.8, 1.64, 1, 1],        /* a couple */
+      [-1.3, -1.5, 1.7, 1, 1], [-0.55, -1.95, 1.82, 0, -1], [-1.45, -2.3, 1.68, 2, -1],   /* three, talking by the text wall */
+    ];
+    const REST = 0.48;                                           /* how see-through a figure is at rest */
+    visitors = HOMES.map(([x, z, tall, kind, flip], i) => {
+      const body = new THREE.Mesh(new THREE.PlaneGeometry(tall / 2, tall), basic({ map: kinds[kind], transparent: true, opacity: REST, depthWrite: false }));
+      body.scale.x = flip; body.renderOrder = 6; scene.add(body);
+      const foot = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.42), basic({ map: shade, transparent: true, opacity: 0.3, depthWrite: false }));
+      foot.rotation.x = -Math.PI / 2; foot.renderOrder = 3; scene.add(foot);
+      return { x, z, hx: x, hz: z, tall, body, foot, flip, phase: i * 1.7 };
+    });
+    moveVisitors = (dt, now) => {
+      const chosen = focus && sharp ? sharp.slot : null;
+      for (const v of visitors) {
+        let tx = v.hx, tz = v.hz;
+        /* step back from the visitor */
+        const dx = v.x - pos.x, dz = v.z - pos.z, far = Math.hypot(dx, dz) || 0.001, NEAR = 2.7;
+        if (far < NEAR) { const push = (NEAR - far) * 1.25; tx += (dx / far) * push; tz += (dz / far) * push; }
+        /* stand clear of the line between the visitor and the painting they are looking at */
+        if (chosen) {
+          const lx = chosen.p.x - pos.x, lz = chosen.p.z - pos.z, len = Math.hypot(lx, lz) || 0.001;
+          const along = (dx * lx + dz * lz) / len, side = (dx * lz - dz * lx) / len;
+          if (along > -0.4 && along < len + 0.6 && Math.abs(side) < 1.25) {
+            const out = (1.25 - Math.abs(side) + 0.5) * (side < 0 ? -1 : 1);
+            tx += (lz / len) * out; tz += (-lx / len) * out;
+          }
+        }
+        [tx, tz] = fix(tx, tz);
+        const k = Math.min(1, dt * 1.5), mx = (tx - v.x) * k, mz = (tz - v.z) * k;
+        v.x += mx; v.z += mz;
+        const walking = Math.min(1, Math.hypot(mx, mz) / Math.max(dt, 0.001) / 0.6);
+        /* always turn to face the visitor; breathe a little at rest, bob a little when walking */
+        v.body.position.set(v.x, v.tall / 2 + Math.abs(Math.sin(now * 0.006 + v.phase)) * 0.025 * walking, v.z);
+        v.body.rotation.set(0, Math.atan2(pos.x - v.x, pos.z - v.z), Math.sin(now * 0.0007 + v.phase) * 0.012);
+        v.foot.position.set(v.x, 0.009, v.z);
+        /* too close to see as a person: let the figure fade */
+        const see = Math.max(0, Math.min(1, (far - 0.8) / 1.1));
+        v.body.material.opacity = REST * see; v.foot.material.opacity = 0.3 * see;
+      }
+    };
   }
 
   /* --- bench: one plain block --- */
@@ -716,7 +798,9 @@ addEventListener("keydown", (e) => { if (e.code === "Escape" && zoom !== null) s
    together to zoom back out. Moving both fingers together turns the view.
    Zooming narrows the field of view. The visitor stays where they stand,
    until the view is zoomed all the way out. After that, bringing the fingers
-   together walks the visitor backwards, away from what they were looking at. */
+   together walks the visitor backwards, away from what they were looking at.
+   Out in the room, spreading the fingers walks forward. Standing at a
+   painting, it zooms into the painting. */
 const fingers = new Map();
 let pinch = null;
 const MAX_ZOOM = 4.5;
@@ -757,7 +841,14 @@ canvas.addEventListener("pointermove", (e) => {
       const back = Math.min(0.6, Math.log(r) * 2.4);    /* halving the gap between the fingers walks about 1.7 m */
       [pos.x, pos.z] = fix(pos.x + Math.sin(yaw) * back, pos.z + Math.cos(yaw) * back);
       focus = false; eyeGoal = EYE; zoom = null;
-    } else zoomTo(camera.fov * r);
+    } else if (r < 1 && !focus && zoom === null) {
+      /* out in the room, spreading the fingers walks forward. Only when something
+         is in the way, such as a wall, does it zoom in from where the visitor stands. */
+      const ahead = Math.min(0.6, -Math.log(r) * 2.4);
+      const [nx, nz] = fix(pos.x - Math.sin(yaw) * ahead, pos.z - Math.cos(yaw) * ahead);
+      if (Math.hypot(nx - pos.x, nz - pos.z) > ahead * 0.3) { pos.x = nx; pos.z = nz; eyeGoal = EYE; }
+      else zoomTo(camera.fov * r);
+    } else zoomTo(camera.fov * r);       /* standing at a painting, or already zoomed: zoom */
     yaw += (now.x - pinch.x) * k; pitch = Math.max(-0.7, Math.min(0.7, pitch + (now.y - pinch.y) * k));
     pinch.x = now.x; pinch.y = now.y;
     return;
@@ -1042,6 +1133,7 @@ function tick(dt) {
     }
   }
   pos.y += (eyeGoal - pos.y) * Math.min(1, dt * 4);
+  if (moveVisitors) moveVisitors(dt, performance.now());
   camera.position.copy(pos);
   /* zoom in or out, a little after the walk has started */
   if ((zoom !== null) !== backShown) { backShown = zoom !== null; backBtn.classList.toggle("on", backShown); backBtn.tabIndex = backShown ? 0 : -1; }
