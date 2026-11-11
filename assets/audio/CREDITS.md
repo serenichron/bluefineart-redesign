@@ -9,5 +9,11 @@
 - Where the credit shows: at the foot of the controls legend in gallery.html. Keep a visible credit wherever this music plays.
 - Changes: re-encoded at a lower bit rate, made quieter, with a short fade in and out.
 
+## voices.mp3
+- Sound: "Chambord Castle, France #1". Visitors talking quietly inside the Château de Chambord.
+- Source: BigSoundBank. https://bigsoundbank.com/chambord-castle-france-1-s3431.html
+- Licence: CC0 (public domain), checked on that page on 2026-11-11. No credit is required.
+- Changes: converted from Ogg to MP3, the sharpest high sounds softened, made quieter, with a short fade in and out.
+
 ## Tried and replaced
 - Satie, Gymnopédie No. 1, played by Robin Alciatore (public domain, via Musopen and Wikimedia Commons). Alex found it boring for the room. The file is no longer in the project.

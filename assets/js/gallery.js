@@ -1085,66 +1085,73 @@ const fonts = document.fonts ? Promise.all([document.fonts.load('italic 46px "In
 fonts.then(() => { for (const s of slots) if (s.label) { s.label.material.map = labelTexture(s); s.label.material.needsUpdate = true; } afterFonts.forEach((f) => f()); });
 
 /* ---------- Sound ----------
-   One piece for piano and strings, played quietly on a loop. Its licence asks
-   for a visible credit, which sits at the foot of the controls legend. Full
-   credits are in assets/audio/CREDITS.md. A page without the switch has no sound.
+   Two sounds, each with its own switch, each played quietly on a loop:
+   - music: one piece for piano and strings. Its licence asks for a visible
+     credit, which sits at the foot of the controls legend.
+   - voices: the murmur of people talking softly in a large room.
+   Full credits are in assets/audio/CREDITS.md. A page without a switch does
+   not get that sound.
 
-   Sound is on by default. A browser will not let a page make sound until the
-   visitor has clicked or pressed a key, so the music starts with their first
-   move in the room, or right after the password is accepted. If they switch it
-   off, the page remembers, and stays silent next time. */
+   Both are on by default. A browser will not let a page make sound until the
+   visitor has done something, so they start with the visitor's first move in
+   the room, or right after the password is accepted. Each switch remembers
+   its own setting for next time. */
 {
-  const btn = document.getElementById("soundBtn");
-  if (btn) {
-    const LEVEL = 0.32, KEY = "bg-gallery-sound";
-    const recall = () => { try { return localStorage.getItem(KEY); } catch (e) { return null; } };
-    const remember = (v) => { try { localStorage.setItem(KEY, v); } catch (e) { /* private window: nothing to keep */ } };
-    let music = null, on = recall() !== "off", fade = 0, canFade = true, started = false;
-    const show = () => { btn.setAttribute("aria-pressed", on); btn.lastElementChild.textContent = on ? "Sound on" : "Sound off"; };
-    /* Start or stop the music, to match the switch. Gives back a promise of
-       whether the browser let it play. A phone refuses unless this runs inside
-       a tap, so a refusal is normal and the page simply tries again later. */
-    function apply() {
-      if (!music) {
-        music = new Audio("assets/audio/moonlight.mp3"); music.loop = true;
-        /* an iPhone ignores a page's volume setting: find out, and skip the fades there */
-        music.volume = 0.5; canFade = Math.abs(music.volume - 0.5) < 0.01;
-        music.volume = canFade ? 0 : 1;
-      }
-      const played = on ? music.play().then(() => true, () => false) : Promise.resolve(true);
-      clearInterval(fade);
-      if (!canFade) { if (!on) music.pause(); return played; }
-      /* glide the volume up or down over about a second, then pause when silent */
-      fade = setInterval(() => {
-        const goal = on ? LEVEL : 0, step = LEVEL / 20;
-        music.volume = Math.max(0, Math.min(LEVEL, music.volume + Math.sign(goal - music.volume) * step));
-        if (Math.abs(music.volume - goal) < step / 2) { music.volume = goal; clearInterval(fade); if (!on) music.pause(); }
-      }, 50);
-      return played;
+  const recall = (key) => { try { return localStorage.getItem(key); } catch (e) { return null; } };
+  const remember = (key, v) => { try { localStorage.setItem(key, v); } catch (e) { /* private window: nothing to keep */ } };
+  const tracks = [
+    { id: "musicBtn", key: "bg-gallery-sound", src: "assets/audio/moonlight.mp3", level: 0.32, name: "Music" },
+    { id: "voicesBtn", key: "bg-gallery-voices", src: "assets/audio/voices.mp3", level: 0.42, name: "Voices" },
+  ].map((t) => Object.assign(t, { btn: document.getElementById(t.id), on: recall(t.key) !== "off", audio: null, fade: 0, canFade: true, started: false }))
+    .filter((t) => t.btn);
+  const show = (t) => { t.btn.setAttribute("aria-pressed", t.on); t.btn.lastElementChild.textContent = t.name + (t.on ? " on" : " off"); };
+  /* Start or stop one sound, to match its switch. Gives back a promise of
+     whether the browser let it play. A phone refuses unless this runs inside
+     a tap, so a refusal is normal and the page simply tries again later. */
+  function apply(t) {
+    if (!t.audio) {
+      t.audio = new Audio(t.src); t.audio.loop = true;
+      /* an iPhone ignores a page's volume setting: find out, and skip the fades there */
+      t.audio.volume = 0.5; t.canFade = Math.abs(t.audio.volume - 0.5) < 0.01;
+      t.audio.volume = t.canFade ? 0 : 1;
     }
-    /* The music starts with the visitor's first move in the room itself. Nothing
-       plays while the password screen is up, or before the room has appeared.
-
-       The events below are the ones a browser counts as a real action by the
-       visitor. A finger touching down does not count on a phone, but lifting
-       it does. The page keeps listening until the music has truly started. */
-    const WAKE = ["pointerup", "click", "touchend", "keydown"];
-    const ready = () => shown && !document.documentElement.classList.contains("bg-locked");
-    const stopWaiting = () => WAKE.forEach((t) => removeEventListener(t, first, true));
-    const begin = () => apply().then((ok) => { if (ok && on) { started = true; stopWaiting(); } });
-    function first(e) {
-      if (started) { stopWaiting(); return; }
-      if (!on || !ready() || btn.contains(e.target)) return;
-      begin();
-    }
-    WAKE.forEach((t) => addEventListener(t, first, true));
-    btn.addEventListener("click", () => { on = !on; remember(on ? "on" : "off"); show(); begin(); });
-    /* the password screen says when it has let the visitor in: try then, once the room is up */
-    addEventListener("bg-unlocked", () => {
-      const go = setInterval(() => { if (!ready()) return; clearInterval(go); if (on && !started) begin(); }, 150);
-    });
-    show();
+    const played = t.on ? t.audio.play().then(() => true, () => false) : Promise.resolve(true);
+    clearInterval(t.fade);
+    if (!t.canFade) { if (!t.on) t.audio.pause(); return played; }
+    /* glide the volume up or down over about a second, then pause when silent */
+    t.fade = setInterval(() => {
+      const goal = t.on ? t.level : 0, step = t.level / 20;
+      t.audio.volume = Math.max(0, Math.min(t.level, t.audio.volume + Math.sign(goal - t.audio.volume) * step));
+      if (Math.abs(t.audio.volume - goal) < step / 2) { t.audio.volume = goal; clearInterval(t.fade); if (!t.on) t.audio.pause(); }
+    }, 50);
+    return played;
   }
+  /* The sounds start with the visitor's first move in the room itself. Nothing
+     plays while the password screen is up, or before the room has appeared.
+
+     The events below are the ones a browser counts as a real action by the
+     visitor. A finger touching down does not count on a phone, but lifting
+     it does. The page keeps listening until every sound that is switched on
+     has truly started. */
+  const WAKE = ["pointerup", "click", "touchend", "keydown"];
+  const ready = () => shown && !document.documentElement.classList.contains("bg-locked");
+  const waiting = () => tracks.some((t) => t.on && !t.started);
+  const stopWaiting = () => WAKE.forEach((type) => removeEventListener(type, first, true));
+  const begin = (t) => apply(t).then((ok) => { if (ok && t.on) t.started = true; if (!waiting()) stopWaiting(); });
+  function first(e) {
+    if (!waiting()) { stopWaiting(); return; }
+    if (!ready() || tracks.some((t) => t.btn.contains(e.target))) return;
+    for (const t of tracks) if (t.on && !t.started) begin(t);
+  }
+  if (tracks.length) WAKE.forEach((type) => addEventListener(type, first, true));
+  for (const t of tracks) {
+    t.btn.addEventListener("click", () => { t.on = !t.on; remember(t.key, t.on ? "on" : "off"); show(t); begin(t); });
+    show(t);
+  }
+  /* the password screen says when it has let the visitor in: try then, once the room is up */
+  addEventListener("bg-unlocked", () => {
+    const go = setInterval(() => { if (!ready()) return; clearInterval(go); for (const t of tracks) if (t.on && !t.started) begin(t); }, 150);
+  });
 }
 
 /* ---------- Full screen ----------

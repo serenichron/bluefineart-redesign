@@ -52,9 +52,9 @@
     .pill:hover, .pill[aria-pressed="true"] { background: #141414; color: #fff; }
     .sound { gap: 8px; padding: 0 16px 0 12px; }
     .sound svg { width: 17px; height: 17px; }
-    .sound .waves { opacity: .25; transition: opacity .2s; }
-    @media (max-width: 520px) { .sound span { display: none; } .sound { padding: 0 12px; } }
-    .sound[aria-pressed="true"] .waves { opacity: 1; }
+    /* on a small or short screen the two sound switches keep only their icons */
+    @media (max-width: 760px), (max-height: 520px) { .sound span { display: none; } .sound { padding: 0; width: 40px; justify-content: center; } }
+    @media (max-width: 520px), (max-height: 520px) { .sound { width: 34px; } }
     .pill:focus-visible { outline: 2px solid #00aeef; outline-offset: 3px; }
     .bottom { left: calc(16px + env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 
@@ -109,9 +109,13 @@
   <div class="ui top">
     <div class="card" id="titleCard"><b>Blue Gallery</b><span><i class="extra">Isaac Maimon &middot; </i>The Landscape Within</span></div>
     <div class="tools">
-      <button class="pill sound" id="soundBtn" aria-pressed="false" aria-label="Sound">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5z"/><path class="waves" d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/></svg>
-        <span>Sound off</span>
+      <button class="pill sound" id="musicBtn" aria-pressed="false" aria-label="Music">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>
+        <span>Music off</span>
+      </button>
+      <button class="pill sound" id="voicesBtn" aria-pressed="false" aria-label="Voices">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h7A2.5 2.5 0 0 1 16 6.5v4A2.5 2.5 0 0 1 13.500 13H9l-3.5 3v-3.200A2.500 2.500 0 0 1 4 10.500z"/><path d="M19 9.500a2.500 2.500 0 0 1 1.500 2.300v3.200a2.500 2.500 0 0 1-2 2.450V20l-2.800-2.500H13"/></svg>
+        <span>Voices off</span>
       </button>
       <button class="pill tool" id="fullBtn" aria-pressed="false" aria-label="Full screen" title="Full screen" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="grow" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><path class="shrink" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
