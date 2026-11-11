@@ -75,6 +75,8 @@
         remember(WANT);
         root.classList.remove("bg-locked");
         gate.remove();
+        /* tell the page it is open, so it can start anything it held back, such as music */
+        window.dispatchEvent(new Event("bg-unlocked"));
       });
     });
   }

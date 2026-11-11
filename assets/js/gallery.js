@@ -841,7 +841,8 @@ fonts.then(() => { for (const s of slots) if (s.label) { s.label.material.map = 
 
    Sound is on by default. A browser will not let a page make sound until the
    visitor has clicked or pressed a key, so the music starts with their first
-   move. If they switch it off, the page remembers, and stays silent next time. */
+   move in the room, or right after the password is accepted. If they switch it
+   off, the page remembers, and stays silent next time. */
 {
   const btn = document.getElementById("soundBtn");
   if (btn) {
@@ -862,12 +863,21 @@ fonts.then(() => { for (const s of slots) if (s.label) { s.label.material.map = 
       }, 50);
     }
     btn.addEventListener("click", () => { on = !on; remember(on ? "on" : "off"); show(); apply(); });
-    /* the first click or key anywhere starts the music, unless that click is on the switch itself */
+    /* The music starts with the visitor's first click or key in the room itself.
+       Nothing plays while the password screen is up, or before the room has
+       appeared. Typing the password is not a move in the room. */
+    const ready = () => shown && !document.documentElement.classList.contains("bg-locked");
+    const stopWaiting = () => { removeEventListener("pointerdown", first, true); removeEventListener("keydown", first, true); };
     const first = (e) => {
-      removeEventListener("pointerdown", first, true); removeEventListener("keydown", first, true);
+      if (!ready()) return;
+      stopWaiting();
       if (on && !btn.contains(e.target)) apply();
     };
     addEventListener("pointerdown", first, true); addEventListener("keydown", first, true);
+    /* the password screen says when it has let the visitor in: start then, once the room is up */
+    addEventListener("bg-unlocked", () => {
+      const go = setInterval(() => { if (!ready()) return; clearInterval(go); stopWaiting(); if (on && !music) apply(); }, 150);
+    });
     show();
   }
 }
