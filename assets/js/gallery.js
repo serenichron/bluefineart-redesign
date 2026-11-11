@@ -925,6 +925,35 @@ fonts.then(() => { for (const s of slots) if (s.label) { s.label.material.map = 
   }
 }
 
+/* ---------- Full screen ----------
+   One button, on desktop and on touch screens. It asks the browser to give the
+   room the whole screen, and to hand it back. The button only appears where
+   the browser allows this. An iPhone does not let a web page do it, so there
+   the button stays hidden. (An iPad and Android phones do.) */
+{
+  const btn = document.getElementById("fullBtn"), el = document.documentElement;
+  const enter = el.requestFullscreen || el.webkitRequestFullscreen;
+  const leave = document.exitFullscreen || document.webkitExitFullscreen;
+  const active = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  if (btn && enter && leave && (document.fullscreenEnabled || document.webkitFullscreenEnabled)) {
+    btn.hidden = false;
+    const show = () => {
+      const on = active();
+      btn.setAttribute("aria-pressed", on);
+      btn.title = on ? "Leave full screen" : "Full screen";
+      btn.setAttribute("aria-label", btn.title);
+    };
+    btn.addEventListener("click", () => {
+      try {
+        const done = active() ? leave.call(document) : enter.call(el);
+        if (done && done.catch) done.catch(() => {});
+      } catch (e) { /* the browser said no: leave the page as it is */ }
+    });
+    document.addEventListener("fullscreenchange", show);
+    document.addEventListener("webkitfullscreenchange", show);
+  }
+}
+
 /* ---------- Loop ---------- */
 function size() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
