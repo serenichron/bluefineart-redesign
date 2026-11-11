@@ -144,8 +144,10 @@
     import * as THREE from "three";
     window.THREE = THREE;
     const s = document.createElement("script");
-    /* on a local server, always fetch the newest script, never a cached one */
-    s.src = "assets/js/gallery.js" + (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? "?t=" + Date.now() : "");
+    /* Always fetch the newest script, never a copy the browser kept. While this
+       is a preview that changes daily, an old script on a new page breaks things:
+       a new button, for one, stays hidden. Drop the "?t=" part once the site is final. */
+    s.src = "assets/js/gallery.js?t=" + Date.now();
     document.body.appendChild(s);
   </script>
 </body>
