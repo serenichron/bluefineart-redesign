@@ -438,9 +438,7 @@ if (QUIET) {
      characters.
 
      They are scattered afresh on every visit: some alone, some in pairs, some
-     in threes, some at a painting, some out in the room. When the visitor
-     comes near, a phantom glides aside. It also clears the view to a painting
-     the visitor has chosen, and drifts back afterwards. --- */
+     in threes, some at a painting, some out in the room. --- */
   {
     const any = Math.random, between = (lo, hi) => lo + any() * (hi - lo);
     const bell = () => (any() + any() + any() - 1.5) / 1.5;          /* a soft random number around zero */
@@ -496,50 +494,115 @@ if (QUIET) {
     }
     const paintings = Array.from({ length: 8 }, phantom);            /* eight different phantoms, shared out among the crowd */
 
-    /* Scatter the crowd. Pick a spot, check it is free, put one, two or three there. */
-    const COUNT = 20, homes = [], spots = [];
+    /* ---- where they stand, and how they move ----
+       The crowd is made of small parties: one, two or three phantoms that keep
+       together. A party has a spot. Now and then it drifts off to a new one,
+       so the room is never quite still.
+
+       Two rules come before everything else:
+       1. A phantom keeps its distance from the visitor.
+       2. A phantom never stands between the visitor and a painting the
+          visitor is looking at.
+       Each phantom weighs up where it could stand and takes the nearest place
+       that breaks neither rule. */
+    const COUNT = 13, KEEP = 2.9, LANE = 1.35;
     /* inside the room, and clear of the floating wall and the bench */
     const free = (x, z) => Math.abs(x) <= HX - 0.6 && Math.abs(z) <= HZ - 0.6 && !BLOCKS.some((b) => Math.abs(x - b.x) < b.hw + 0.45 && Math.abs(z - b.z) < b.hd + 0.45);
-    for (let tries = 0; homes.length < COUNT && tries < 600; tries++) {
-      let x, z;
-      if (any() < 0.55) {                                            /* at a painting, a step or two back from it */
+    /* does the straight line between two spots pass through the wall or the bench? */
+    const blocked = (x0, z0, x1, z1) => { for (let i = 1; i < 24; i++) { const t = i / 24; if (BLOCKS.some((b) => Math.abs(x0 + (x1 - x0) * t - b.x) < b.hw + 0.2 && Math.abs(z0 + (z1 - z0) * t - b.z) < b.hd + 0.2)) return true; } return false; };
+    /* a likely place to stand: a step or two back from a painting, or out in the room */
+    function somewhere() {
+      if (any() < 0.6) {
         const s = slots[Math.floor(any() * slots.length)], back = between(1.5, 2.6), along = between(-0.9, 0.9);
-        x = s.p.x + s.n.x * back - s.n.z * along; z = s.p.z + s.n.z * back + s.n.x * along;
-      } else { x = between(-HX + 0.9, HX - 0.9); z = between(-HZ + 0.9, HZ - 0.9); }      /* out in the room */
-      if (!free(x, z) || Math.hypot(x, z - (HZ - 1.4)) < 2.4 || spots.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < 1.5)) continue;
-      spots.push([x, z]);
-      const size = any() < 0.5 ? 1 : any() < 0.62 ? 2 : 3, turn = any() * 6.283;
-      for (let k = 0; k < size && homes.length < COUNT; k++) {
-        const hx = x + (size > 1 ? Math.cos(turn + (k / size) * 6.283) * between(0.34, 0.5) : 0), hz = z + (size > 1 ? Math.sin(turn + (k / size) * 6.283) * between(0.34, 0.5) : 0);
-        if (free(hx, hz)) homes.push([hx, hz]);
+        return [s.p.x + s.n.x * back - s.n.z * along, s.p.z + s.n.z * back + s.n.x * along];
       }
+      return [between(-HX + 0.9, HX - 0.9), between(-HZ + 0.9, HZ - 0.9)];
     }
-    const REST = 0.5;                                                /* how much of a phantom shows, at most */
-    visitors = homes.map(([x, z], i) => {
-      const tall = between(1.56, 1.9);
-      const body = new THREE.Mesh(new THREE.PlaneGeometry(tall / 2, tall), basic({ map: paintings[i % paintings.length], transparent: true, opacity: 0, depthWrite: false }));
+    const parties = [];
+    const crowded = (x, z, but) => parties.some((q) => q !== but && Math.hypot(q.x - x, q.z - z) < 1.6);
+    for (let tries = 0, n = 0; n < COUNT && tries < 600; tries++) {
+      const [x, z] = somewhere();
+      if (!free(x, z) || Math.hypot(x, z - (HZ - 1.4)) < 3 || crowded(x, z)) continue;
+      const size = Math.min(COUNT - n, any() < 0.5 ? 1 : any() < 0.62 ? 2 : 3), turn = any() * 6.283;
+      parties.push({ x, z, size, turn, wait: between(10, 70) });
+      n += size;
+    }
+    const REST = 0.36;                                               /* how much of a phantom shows, at most */
+    visitors = [];
+    for (const party of parties) for (let k = 0; k < party.size; k++) {
+      const tall = between(1.56, 1.9), reach = party.size > 1 ? between(0.34, 0.5) : 0, at = party.turn + (k / party.size) * 6.283;
+      const body = new THREE.Mesh(new THREE.PlaneGeometry(tall / 2, tall), basic({ map: paintings[visitors.length % paintings.length], transparent: true, opacity: 0, depthWrite: false }));
       body.scale.x = any() < 0.5 ? -1 : 1; body.renderOrder = 6; scene.add(body);
-      return { x, z, hx: x, hz: z, tall, body, phase: any() * 60, shimmer: between(0.0004, 0.0009) };
-    });
+      const ox = Math.cos(at) * reach, oz = Math.sin(at) * reach;
+      visitors.push({ party, ox, oz, x: party.x + ox, z: party.z + oz, tall, body, phase: any() * 60, shimmer: between(0.0004, 0.0009) });
+    }
+
+    /* The painting the visitor is looking at: the one they walked up to, or
+       else the one most squarely in front of them and not too far off. */
+    function regarded() {
+      if (focus && sharp) return sharp.slot;
+      const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+      let best = null, most = 0.86;
+      for (const s of slots) {
+        if (!s.art) continue;
+        const dx = s.p.x - pos.x, dz = s.p.z - pos.z, far = Math.hypot(dx, dz);
+        if (far > 8 || far < 0.3 || dx * s.n.x + dz * s.n.z > 0) continue;       /* too far, or seen from behind */
+        const facing = (dx * fx + dz * fz) / far;
+        if (facing > most) { most = facing; best = s; }
+      }
+      return best;
+    }
+    /* How badly a spot breaks the two rules. Zero means it is a fine place to stand. */
+    function trouble(x, z, look) {
+      let bad = 0;
+      const dx = x - pos.x, dz = z - pos.z, far = Math.hypot(dx, dz);
+      if (far < KEEP) bad += (KEEP - far) * 2;
+      if (look) {
+        const lx = look.p.x - pos.x, lz = look.p.z - pos.z, len = Math.hypot(lx, lz) || 0.001;
+        const along = (dx * lx + dz * lz) / len, side = Math.abs(dx * lz - dz * lx) / len;
+        if (along > -0.5 && along < len + 0.3 && side < LANE) bad += (LANE - side) * 3 + 1;
+      }
+      return bad;
+    }
+    const RING = Array.from({ length: 16 }, (_, i) => [Math.cos((i / 16) * 6.283), Math.sin((i / 16) * 6.283)]);
+
     moveVisitors = (dt, now) => {
-      const chosen = focus && sharp ? sharp.slot : null;
+      const look = regarded();
+      /* now and then a party drifts to a new spot of its own accord */
+      for (const party of parties) {
+        party.wait -= dt;
+        if (party.wait > 0) continue;
+        party.wait = between(25, 80);
+        for (let tries = 0; tries < 14; tries++) {
+          const [x, z] = somewhere();
+          if (free(x, z) && !crowded(x, z, party) && !blocked(party.x, party.z, x, z) && trouble(x, z, look) === 0) { party.x = x; party.z = z; break; }
+        }
+      }
       for (const v of visitors) {
-        let tx = v.hx, tz = v.hz;
-        /* glide back from the visitor */
-        const dx = v.x - pos.x, dz = v.z - pos.z, far = Math.hypot(dx, dz) || 0.001, NEAR = 2.7;
-        if (far < NEAR) { const push = (NEAR - far) * 1.25; tx += (dx / far) * push; tz += (dz / far) * push; }
-        /* keep clear of the line between the visitor and the painting they are looking at */
-        if (chosen) {
-          const lx = chosen.p.x - pos.x, lz = chosen.p.z - pos.z, len = Math.hypot(lx, lz) || 0.001;
-          const along = (dx * lx + dz * lz) / len, side = (dx * lz - dz * lx) / len;
-          if (along > -0.4 && along < len + 0.6 && Math.abs(side) < 1.25) {
-            const out = (1.25 - Math.abs(side) + 0.5) * (side < 0 ? -1 : 1);
-            tx += (lz / len) * out; tz += (-lx / len) * out;
+        /* start from the party's spot. If that breaks a rule, look around it, wider and wider, for the nearest place that does not. */
+        /* (a member of a party stands a little off its spot: keep that inside the walls too) */
+        let tx = Math.max(-HX + 0.6, Math.min(HX - 0.6, v.party.x + v.ox)), tz = Math.max(-HZ + 0.6, Math.min(HZ - 0.6, v.party.z + v.oz)), bad = trouble(tx, tz, look);
+        if (bad > 0) {
+          let found = false;
+          for (let r = 0.8; r <= 4.8 && !found; r += 0.8) {
+            let bx = tx, bz = tz, least = Infinity;
+            for (const [cx, cz] of RING) {
+              const x = tx + cx * r, z = tz + cz * r;
+              if (!free(x, z)) continue;
+              /* among the safe places at this distance, take the one nearest to where the phantom is now */
+              const t = trouble(x, z, look), cost = t * 100 + Math.hypot(x - v.x, z - v.z);
+              if (cost < least) { least = cost; bx = x; bz = z; found = t === 0; }
+            }
+            if (least < Infinity && (found || r > 4)) { tx = bx; tz = bz; }
           }
         }
-        [tx, tz] = fix(tx, tz);
-        const k = Math.min(1, dt * 1.4);
-        v.x += (tx - v.x) * k; v.z += (tz - v.z) * k;
+        /* glide there. Quicker when making room for the visitor, slower when just drifting. */
+        const gx = tx - v.x, gz = tz - v.z, gap = Math.hypot(gx, gz);
+        if (gap > 0.002) {
+          const speed = trouble(v.x, v.z, look) > 0 ? 2.1 : 0.55, step = Math.min(gap, speed * dt, gap * dt * 3 + 0.002);
+          v.x += (gx / gap) * step; v.z += (gz / gap) * step;
+        }
+        const far = Math.hypot(v.x - pos.x, v.z - pos.z);
         /* hover a little off the floor, sway like something seen through water, and turn to face the visitor */
         v.body.position.set(v.x, v.tall / 2 + 0.03 + Math.sin(now * v.shimmer + v.phase) * 0.018, v.z);
         v.body.rotation.set(0, Math.atan2(pos.x - v.x, pos.z - v.z), Math.sin(now * v.shimmer * 0.8 + v.phase) * 0.016);
