@@ -714,7 +714,9 @@ backBtn.addEventListener("click", stepBack);
 addEventListener("keydown", (e) => { if (e.code === "Escape" && zoom !== null) stepBack(); });
 /* Two fingers on the screen pinch to zoom: spread them to zoom in, bring them
    together to zoom back out. Moving both fingers together turns the view.
-   Zooming narrows the field of view. The visitor stays where they stand. */
+   Zooming narrows the field of view. The visitor stays where they stand,
+   until the view is zoomed all the way out. After that, bringing the fingers
+   together walks the visitor backwards, away from what they were looking at. */
 const fingers = new Map();
 let pinch = null;
 const MAX_ZOOM = 4.5;
@@ -748,7 +750,14 @@ canvas.addEventListener("pointermove", (e) => {
   if (pinch) {
     if (fingers.size < 2) return;
     const now = spread(), k = (camera.fov / 62) * 0.0034;
-    zoomTo(pinch.fov * pinch.d / now.d);
+    /* r is above 1 while the fingers come together, below 1 while they spread */
+    const r = pinch.d / now.d; pinch.d = now.d;
+    if (r > 1 && camera.fov >= baseFov - 0.4) {
+      /* already zoomed all the way out: the same gesture now steps back through the room */
+      const back = Math.min(0.6, Math.log(r) * 2.4);    /* halving the gap between the fingers walks about 1.7 m */
+      [pos.x, pos.z] = fix(pos.x + Math.sin(yaw) * back, pos.z + Math.cos(yaw) * back);
+      focus = false; eyeGoal = EYE; zoom = null;
+    } else zoomTo(camera.fov * r);
     yaw += (now.x - pinch.x) * k; pitch = Math.max(-0.7, Math.min(0.7, pitch + (now.y - pinch.y) * k));
     pinch.x = now.x; pinch.y = now.y;
     return;
